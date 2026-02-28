@@ -47,6 +47,7 @@ onMounted(async () => {
     console.log('Pixi initialized successfully')
   } catch (error) {
     console.error('Failed to initialize Pixi:', error)
+    return
   }
 
   if (app && app.canvas) {
@@ -56,7 +57,41 @@ onMounted(async () => {
     canvasRef.value.appendChild(app.canvas)
   }
 
-  if (!app) return
+  // Load Assets
+  const playerSpritesheetPath = `/assets/Denzi071022-2.png?t=${Date.now()}`
+  const cpuSpritesheetPath = `/assets/Denzi071027-6.png?t=${Date.now()}`
+  
+  const [playerBaseTexture, cpuBaseTexture] = await Promise.all([
+    PIXI.Assets.load(playerSpritesheetPath),
+    PIXI.Assets.load(cpuSpritesheetPath)
+  ])
+
+  function createFrames(texture: PIXI.Texture, yOffset: number, count = 4) {
+    const frames = []
+    for (let i = 0; i < count; i++) {
+      frames.push(new PIXI.Texture({
+        source: texture,
+        frame: new PIXI.Rectangle(i * 64, yOffset, 64, 64)
+      }))
+    }
+    return frames
+  }
+
+  const playerAnimations = {
+    idle: createFrames(playerBaseTexture, 80),
+    walkUp: createFrames(playerBaseTexture, 160),
+    walkDown: createFrames(playerBaseTexture, 224),
+    attackUp: createFrames(playerBaseTexture, 304),
+    attackDown: createFrames(playerBaseTexture, 368),
+  }
+
+  const cpuAnimations = {
+    idle: createFrames(cpuBaseTexture, 80),
+    walkUp: createFrames(cpuBaseTexture, 160),
+    walkDown: createFrames(cpuBaseTexture, 224),
+    attackUp: createFrames(cpuBaseTexture, 304),
+    attackDown: createFrames(cpuBaseTexture, 368),
+  }
 
   // Layer Containers for rendering order
   const zoneLayer = new PIXI.Container()
@@ -72,8 +107,9 @@ onMounted(async () => {
   dragLine = new PIXI.Graphics()
   uiLayer.addChild(dragLine)
 
-  // Mapping from baseId to visuals for efficient updates
+  // Mapping from baseId/unitId to visuals for efficient updates
   const baseVisuals = new Map<string, { container: PIXI.Container, zone: PIXI.Graphics }>()
+  const unitVisuals = new Map<string, { container: PIXI.Container, sprite: PIXI.AnimatedSprite, text: PIXI.Text }>()
 
   app.ticker.add((ticker) => {
     const deltaSeconds = ticker.deltaTime / 60
@@ -204,25 +240,76 @@ onMounted(async () => {
     })
 
     // Render Units
-    unitLayer.removeChildren()
+    // Cleanup old visuals
+    const currentUnitIds = new Set(gameStore.units.map(u => u.id))
+    for (const [id, visuals] of unitVisuals.entries()) {
+      if (!currentUnitIds.has(id)) {
+        visuals.container.destroy({ children: true })
+        unitVisuals.delete(id)
+      }
+    }
+
     gameStore.units.forEach((unit: Unit) => {
-      const g = new PIXI.Graphics()
-      g.beginPath()
-      g.fillStyle = OWNER_COLORS[unit.owner]
-      g.rect(-8, -8, 16, 16)
-      g.fill()
-      g.x = unit.x
-      g.y = unit.y
+      let visuals = unitVisuals.get(unit.id)
+      
+      if (!visuals) {
+        const container = new PIXI.Container()
+        const isPlayer = unit.owner === 'player'
+        const anims = isPlayer ? playerAnimations : cpuAnimations
+        
+        const sprite = new PIXI.AnimatedSprite(anims.walkDown)
+        sprite.anchor.set(0.5)
+        sprite.animationSpeed = 0.1 // Slower animation
+        sprite.play()
+        sprite.scale.set(1.2) 
+        
+        container.addChild(sprite)
 
-      const t = new PIXI.Text({
-        text: Math.ceil(unit.power).toString(),
-        style: { fontSize: 10, fill: 0xffffff }
-      })
-      t.anchor.set(0.5)
-      t.y = -12
-      g.addChild(t)
+        const text = new PIXI.Text({
+          text: Math.ceil(unit.power).toString(),
+          style: { fontSize: 10, fill: 0xffffff }
+        })
+        text.anchor.set(0.5)
+        text.y = -40 // Fixed for size
+        container.addChild(text)
+        
+        unitLayer.addChild(container)
+        visuals = { container, sprite, text }
+        unitVisuals.set(unit.id, visuals)
+      }
 
-      unitLayer.addChild(g)
+      const { container, sprite, text } = visuals
+      container.x = unit.x
+      container.y = unit.y
+      text.text = Math.ceil(unit.power).toString()
+
+      if (sprite instanceof PIXI.AnimatedSprite) {
+        // Determine Animation & Direction
+        const source = gameStore.bases.find(b => b.id === unit.sourceId)
+        const target = gameStore.bases.find(b => b.id === unit.targetId)
+        
+        const isMovingRight = target && source ? target.x > source.x : false
+        const isMovingUp = target && source ? target.y < source.y : false
+        
+        // Flip sprite for right movement (original is left-facing: scale.x = 1.2)
+        sprite.scale.x = isMovingRight ? -1.2 : 1.2
+        
+        const isPlayer = unit.owner === 'player'
+        const anims = isPlayer ? playerAnimations : cpuAnimations
+        
+        let targetAnim: any
+        if (unit.isFighting) {
+          // Row 2 (attackDown key mapping to Row 2 frames) for Up, Row 1 (attackUp key) for Down/Parallel
+          targetAnim = isMovingUp ? anims.attackDown : anims.attackUp
+        } else {
+          targetAnim = isMovingUp ? anims.walkDown : anims.walkUp
+        }
+        
+        if (sprite.textures !== targetAnim) {
+          sprite.textures = targetAnim
+          sprite.play()
+        }
+      }
     })
 
     // Render Drag Line or Multi-Send Lines
