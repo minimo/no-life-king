@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { background: #222; color: white; display: flex; flex-wrap: wrap; gap: 5px; }
+    .tile { width: 128px; height: 128px; border: 1px solid #555; position: relative; }
+    .label { position: absolute; top: 0; left: 0; background: rgba(0,0,0,0.8); font-size: 16px; font-weight: bold; z-index: 10; padding: 2px;}
+    .bg { position: absolute; top:0; left:0; width: 128px; height: 128px; image-rendering: pixelated; }
+  </style>
+</head>
+<body>
+<script>
+const img = new Image();
+// Need to handle local file loaded from file:// protocol
+// We will assume the subagent runs it as file:///.../viewer.html
+// so the relative path to assets is ./assets/...
+img.src = './assets/Denzi111023-1_processed_v3.png';
+img.onload = () => {
+  const blocksPerRow = Math.floor(img.width / 64);
+  const rows = Math.floor(img.height / 64);
+  
+  for(let y=0; y<rows; y++) {
+    for(let x=0; x<blocksPerRow; x++) {
+      const c = document.createElement('canvas');
+      c.className = 'bg';
+      c.width = 64; c.height = 64;
+      const ctx = c.getContext('2d', {willReadFrequently: true});
+      ctx.drawImage(img, x*64, y*64, 64, 64, 0, 0, 64, 64);
+      
+      const data = ctx.getImageData(0,0,64,64).data;
+      let empty = true;
+      for(let i=3; i<data.length; i+=4) {
+        if (data[i] > 0) { empty = false; break; }
+      }
+      
+      if (!empty) {
+        const d = document.createElement('div');
+        d.className = 'tile';
+        const l = document.createElement('div');
+        l.className = 'label';
+        l.innerText = `X:${x}, Y:${y}`;
+        d.appendChild(l);
+        d.appendChild(c);
+        document.body.appendChild(d);
+      }
+    }
+  }
+};
+img.onerror = () => {
+    document.body.innerHTML = "<h1>Failed to load image. Path: " + img.src + "</h1>";
+}
+</script>
+</body>
+</html>

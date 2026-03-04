@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { createNoise2D } from 'simplex-noise'
 
 export type Owner = 'player' | 'cpu' | 'neutral'
 export type Rank = 1 | 2 | 3
@@ -50,6 +51,7 @@ const UNIT_SPEED = 120 // px/sec
 
 export const useGameStore = defineStore('game', {
     state: () => ({
+        mapGrid: [] as number[][], // 51x51 grid (0: Grass, 1: Water, 2: Mountain, 3: Wood, 4: Bridge)
         bases: [] as Base[],
         units: [] as Unit[],
         sendRatio: 0.5,
@@ -69,29 +71,29 @@ export const useGameStore = defineStore('game', {
             this.cpuThinkingTimer = Math.random() * 1.0 + 0.5
             this.status = 'playing'
 
-            const width = 1920
-            const height = 1080
+            // Logical coordinate system: 0 to 800
+            const size = 800
             const margin = 100
-            const minDistance = 180
+            const minDistance = 150
 
             // 1. Create Core Bases
-            // Player Core (Left side)
-            const pCoreX = margin + Math.random() * 200
-            const pCoreY = margin + Math.random() * (height - margin * 2)
+            // Player Core (Left area of the diamond)
+            const pCoreX = margin + Math.random() * 100
+            const pCoreY = size / 2 + (Math.random() - 0.5) * 200
             this.bases.push(this.createBase('p-core', 'player', 1, true, pCoreX, pCoreY))
 
-            // CPU Core (Right side)
-            const cCoreX = width - margin - Math.random() * 200
-            const cCoreY = margin + Math.random() * (height - margin * 2)
+            // CPU Core (Right area of the diamond)
+            const cCoreX = size - margin - Math.random() * 100
+            const cCoreY = size / 2 + (Math.random() - 0.5) * 200
             this.bases.push(this.createBase('c-core', 'cpu', 1, true, cCoreX, cCoreY))
 
             // 2. Create Neutral Bases
-            const baseCount = Math.floor(Math.random() * 9) + 12 // 12 to 20 total bases
+            const baseCount = Math.floor(Math.random() * 7) + 8 // 10 to 15 total bases
             let attempts = 0
-            while (this.bases.length < baseCount && attempts < 100) {
+            while (this.bases.length < baseCount && attempts < 200) {
                 attempts++
-                const x = margin + Math.random() * (width - margin * 2)
-                const y = margin + Math.random() * (height - margin * 2)
+                const x = margin + Math.random() * (size - margin * 2)
+                const y = margin + Math.random() * (size - margin * 2)
 
                 // Check distance from existing bases
                 const tooClose = this.bases.some(b => Math.hypot(b.x - x, b.y - y) < minDistance)
@@ -100,6 +102,217 @@ export const useGameStore = defineStore('game', {
                     this.bases.push(this.createBase(id, 'neutral', 1, false, x, y))
                 }
             }
+
+            // 3. Generate Map (51x51 logic grid for 800x800 area with step 16)
+            const noise2D_elev = createNoise2D()
+            const noise2D_moist = createNoise2D()
+            this.mapGrid = Array(51).fill(0).map(() => Array(51).fill(0))
+
+            for (let y = 0; y <= 50; y++) {
+                for (let x = 0; x <= 50; x++) {
+                    const nx = x / 50 - 0.5
+                    const ny = y / 50 - 0.5
+                    // FBM (Fractal Brownian Motion)
+                    let e = noise2D_elev(nx * 3, ny * 3) + 0.5 * noise2D_elev(nx * 6, ny * 6)
+                    e = e / 1.5 // normalize
+
+                    let m = noise2D_moist(nx * 3, ny * 3) + 0.5 * noise2D_moist(nx * 6, ny * 6)
+                    m = m / 1.5 // normalize
+
+                    if (e > 0.45) {
+                        this.mapGrid[y][x] = 2 // Mountain
+                    } else if (m > 0.3) {
+                        this.mapGrid[y][x] = 3 // Wood
+                    } else {
+                        this.mapGrid[y][x] = 0 // Grass
+                    }
+                }
+            }
+
+            // 4. Carve Rivers
+            const numRivers = Math.floor(Math.random() * 3) // 0 to 2
+
+            for (let r = 0; r < numRivers; r++) {
+                const isHorizontal = Math.random() < 0.5
+                let startX: number, startY: number, endX: number, endY: number
+
+                if (isHorizontal) {
+                    startX = 0
+                    startY = Math.floor(Math.random() * 40) + 5
+                    endX = 50
+                    endY = Math.floor(Math.random() * 40) + 5
+                } else {
+                    startX = Math.floor(Math.random() * 40) + 5
+                    startY = 0
+                    endX = Math.floor(Math.random() * 40) + 5
+                    endY = 50
+                }
+
+                const riverNoise = createNoise2D()
+                const riverPoints: { x: number, y: number }[] = []
+
+                let lastNx = -1
+                let lastNy = -1
+
+                const recordPoint = (nx: number, ny: number) => {
+                    if (this.mapGrid[ny] && this.mapGrid[ny][nx] !== undefined) {
+                        this.mapGrid[ny][nx] = 1 // Water
+                        if (nx >= 2 && nx <= 48 && ny >= 2 && ny <= 48) {
+                            if (!riverPoints.find(p => p.x === nx && p.y === ny)) {
+                                riverPoints.push({ x: nx, y: ny })
+                            }
+                        }
+                    }
+                }
+
+                const carveRiverPath = (x0: number, y0: number, x1: number, y1: number) => {
+                    const dist = Math.hypot(x1 - x0, y1 - y0)
+                    const steps = Math.ceil(dist * 5)
+                    for (let i = 0; i <= steps; i++) {
+                        const t = i / steps
+                        const lx = x0 + (x1 - x0) * t
+                        const ly = y0 + (y1 - y0) * t
+                        // Decreased frequency (lx/20) and amplitude (4) for smoother rivers
+                        const offset = riverNoise(lx / 20, ly / 20) * 4
+                        let pdx = -(y1 - y0) / (dist || 1)
+                        let pdy = (x1 - x0) / (dist || 1)
+                        const curX = lx + pdx * offset
+                        const curY = ly + pdy * offset
+
+                        const nx = Math.round(curX)
+                        const ny = Math.round(curY)
+
+                        if (lastNx !== -1 && lastNy !== -1) {
+                            if (Math.abs(nx - lastNx) >= 1 && Math.abs(ny - lastNy) >= 1) {
+                                recordPoint(nx, lastNy)
+                            }
+                        }
+
+                        recordPoint(nx, ny)
+                        lastNx = nx
+                        lastNy = ny
+                    }
+                }
+
+                carveRiverPath(startX, startY, endX, endY)
+
+                // Branching
+                if (Math.random() < 1 / 3) {
+                    const branchT = 0.3 + Math.random() * 0.4
+                    const branchStartX = startX + (endX - startX) * branchT
+                    const branchStartY = startY + (endY - startY) * branchT
+                    let branchEndX: number, branchEndY: number
+
+                    if (isHorizontal) {
+                        branchEndX = Math.max(0, Math.min(50, branchStartX + (Math.random() - 0.5) * 50))
+                        branchEndY = Math.random() < 0.5 ? 0 : 50
+                    } else {
+                        branchEndX = Math.random() < 0.5 ? 0 : 50
+                        branchEndY = Math.max(0, Math.min(50, branchStartY + (Math.random() - 0.5) * 50))
+                    }
+                    carveRiverPath(branchStartX, branchStartY, branchEndX, branchEndY)
+                }
+
+                // Add up to 3 bridges for this river system
+                const maxBridges = Math.floor(Math.random() * 4) // 0 to 3
+                for (let b = 0; b < maxBridges; b++) {
+                    if (riverPoints.length === 0) break
+
+                    // Find a valid straight point
+                    let validIdx = -1
+                    let attempt = 0
+                    while (attempt < 10) {
+                        const idx = Math.floor(Math.random() * riverPoints.length)
+                        const point = riverPoints[idx]
+                        if (!point) {
+                            attempt++
+                            continue
+                        }
+                        const x = point.x
+                        const y = point.y
+                        if (this.mapGrid[y] && this.mapGrid[y][x] === 1) {
+                            // Check straightness: Horizontal or Vertical water blocks
+                            const isHoriz = (this.mapGrid[y]?.[x - 1] === 1 && this.mapGrid[y]?.[x + 1] === 1 && this.mapGrid[y - 1]?.[x] !== 1 && this.mapGrid[y + 1]?.[x] !== 1)
+                            const isVert = (this.mapGrid[y - 1]?.[x] === 1 && this.mapGrid[y + 1]?.[x] === 1 && this.mapGrid[y]?.[x - 1] !== 1 && this.mapGrid[y]?.[x + 1] !== 1)
+                            if (isHoriz || isVert) {
+                                validIdx = idx
+                                break
+                            }
+                        }
+                        attempt++
+                    }
+
+                    if (validIdx !== -1) {
+                        const point = riverPoints[validIdx]
+                        if (point) {
+                            this.mapGrid[point.y][point.x] = 4 // Set to bridge
+                            // Remove surrounding points to avoid clustered bridges
+                            riverPoints.splice(Math.max(0, validIdx - 8), 16)
+                            continue
+                        }
+                    }
+
+                    // If no valid straight point found after attempts, just remove a random one to prevent infinite loops on tiny rivers
+                    const failIdx = Math.floor(Math.random() * riverPoints.length)
+                    riverPoints.splice(Math.max(0, failIdx - 8), 16)
+                }
+            }
+            // Assign variations for Mountains and Woods
+            let waterCount = 0
+            for (let y = 0; y <= 50; y++) {
+                for (let x = 0; x <= 50; x++) {
+                    if (this.mapGrid[y] && this.mapGrid[y][x] === 1) waterCount++
+                    if (this.mapGrid[y] && this.mapGrid[y][x] === 3) {
+                        // Wood 1 to 9 -> map to 31 to 39
+                        this.mapGrid[y][x] = 31 + Math.floor(Math.random() * 9)
+                    } else if (this.mapGrid[y] && this.mapGrid[y][x] === 2) {
+                        // Mountain
+                        let isHigh = true
+                        const dirs: [number, number][] = [[0, -1], [0, 1], [-1, 0], [1, 0]]
+                        for (const [dx, dy] of dirs) {
+                            const nx = x + dx
+                            const ny = y + dy
+                            if (nx >= 0 && nx <= 50 && ny >= 0 && ny <= 50) {
+                                // If any neighbour is NOT a mountain, it's not surrounded
+                                const neighborId = this.mapGrid[ny]?.[nx]
+                                if (neighborId !== undefined && neighborId !== 2 && Math.floor(neighborId / 10) !== 2) {
+                                    isHigh = false
+                                    break
+                                }
+                            } else {
+                                isHigh = false
+                                break
+                            }
+                        }
+                        if (isHigh) {
+                            this.mapGrid[y][x] = 23 + Math.floor(Math.random() * 2) // 23, 24
+                        } else {
+                            this.mapGrid[y][x] = 21 + Math.floor(Math.random() * 2) // 21, 22
+                        }
+
+                    }
+                }
+            }
+
+            // Clear area around bases
+            this.bases.forEach(base => {
+                const gridX = Math.round(base.x / 16)
+                const gridY = Math.round(base.y / 16)
+                for (let dy = -2; dy <= 2; dy++) {
+                    for (let dx = -2; dx <= 2; dx++) {
+                        const ny = gridY + dy
+                        const nx = gridX + dx
+                        if (ny >= 0 && ny <= 50 && nx >= 0 && nx <= 50) {
+                            if (this.mapGrid[ny][nx] !== 1) { // Do not erase rivers
+                                this.mapGrid[ny][nx] = 0 // Grass
+                            }
+                        }
+                    }
+                }
+            })
+
+            // Add bridges between bases where line of sight crosses water
+            // (Removed previous logic to randomly place exactly 0-3 bridges per river)
         },
 
         createBase(id: string, owner: Owner, rank: Rank, isCore: boolean, x: number, y: number): Base {
@@ -122,9 +335,9 @@ export const useGameStore = defineStore('game', {
         sendUnits(sourceId: string, targetId: string) {
             if (this.isGameOver) return
 
-            const source = this.bases.find(b => b.id === sourceId)
-            const target = this.bases.find(b => b.id === targetId)
-            if (!source || !target || source.id === targetId) return
+            const source = this.bases.find((b: Base) => b.id === sourceId)
+            const target = this.bases.find((b: Base) => b.id === targetId)
+            if (!source || !target || source.id === target.id) return
 
             const sendPower = Math.floor(source.production * this.sendRatio)
             if (sendPower < 1) return
