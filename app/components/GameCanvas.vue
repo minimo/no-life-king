@@ -427,7 +427,7 @@ onMounted(async () => {
         sprite.anchor.set(0.5, 0.8)
         sprite.animationSpeed = 0.1
         sprite.play()
-        sprite.scale.set(1.5) 
+        sprite.scale.set(1.0) 
         
         container.addChild(sprite)
 
@@ -468,7 +468,7 @@ onMounted(async () => {
         }
         
         // Flip sprite for right movement (original is left-facing: scale.x = 1.5)
-        sprite.scale.x = isMovingRight ? -1.5 : 1.5
+        sprite.scale.x = isMovingRight ? -1.0 : 1.0
         
         const isPlayer = unit.owner === 'player'
         const anims = isPlayer ? playerAnimations : cpuAnimations

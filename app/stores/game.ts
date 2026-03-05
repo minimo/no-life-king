@@ -47,7 +47,7 @@ export const RANK_CONFIG = {
     3: { cap: 220, growth: 4.5, upgradeCost: 120 },
 }
 
-const UNIT_SPEED = 120 // px/sec
+const UNIT_SPEED = 30 // px/sec
 
 export const useGameStore = defineStore('game', {
     state: () => ({
