@@ -260,7 +260,7 @@ export interface GameState {
     winner: Owner | null
     targetSelectThreshold: number
     cpuThinkingTimer: number
-    status: 'title' | 'playing' | 'gameover'
+    status: 'title' | 'playing' | 'gameover' | 'paused'
 }
 
 export const useGameStore = defineStore('game', {
@@ -567,8 +567,123 @@ export const useGameStore = defineStore('game', {
                 }
             })
 
-            // Add bridges between bases where line of sight crosses water
-            // (Removed previous logic to randomly place exactly 0-3 bridges per river)
+            // 川で完全に分断された陸地（一定以上の広さ）がある場合は、橋で結ぶ
+            let landsConnected = false;
+            let landConnectAttempts = 0;
+            while (!landsConnected && landConnectAttempts < 10) {
+                landConnectAttempts++;
+                const visitedGrid = new Set<number>();
+                const key = (x: number, y: number) => y * 51 + x;
+                const landGroups: { x: number, y: number }[][] = [];
+
+                for (let y = 0; y <= 50; y++) {
+                    for (let x = 0; x <= 50; x++) {
+                        const tile = this.mapGrid[y]?.[x] ?? 0;
+                        if (tile !== 1 && !visitedGrid.has(key(x, y))) {
+                            const group: { x: number, y: number }[] = [];
+                            const queue: { x: number, y: number }[] = [{ x, y }];
+                            visitedGrid.add(key(x, y));
+
+                            let qIdx = 0;
+                            while (qIdx < queue.length) {
+                                const cur = queue[qIdx++]!;
+                                group.push(cur);
+
+                                const DIRS: [number, number][] = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+                                for (const [dx, dy] of DIRS) {
+                                    const nx = cur.x + dx;
+                                    const ny = cur.y + dy;
+                                    if (nx >= 0 && nx <= 50 && ny >= 0 && ny <= 50) {
+                                        const nTile = this.mapGrid[ny]?.[nx] ?? 0;
+                                        if (nTile !== 1) {
+                                            const nk = key(nx, ny);
+                                            if (!visitedGrid.has(nk)) {
+                                                visitedGrid.add(nk);
+                                                queue.push({ x: nx, y: ny });
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            // 一定以上の広さを持つ陸地のみ（広さ20超）
+                            if (group.length > 20) {
+                                landGroups.push(group);
+                            }
+                        }
+                    }
+                }
+
+                if (landGroups.length <= 1) {
+                    landsConnected = true;
+                } else {
+                    // グループ0とグループ1の海岸線を探し、最も近い2点を橋で繋ぐ
+                    const getShoreline = (group: { x: number, y: number }[]) => {
+                        return group.filter(p => {
+                            const DIRS: [number, number][] = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+                            for (const [dx, dy] of DIRS) {
+                                const nx = p.x + dx;
+                                const ny = p.y + dy;
+                                if (nx >= 0 && nx <= 50 && ny >= 0 && ny <= 50) {
+                                    if (this.mapGrid[ny]?.[nx] === 1) return true;
+                                }
+                            }
+                            return false;
+                        });
+                    };
+
+                    const shoreA = getShoreline(landGroups[0]!);
+                    const shoreB = getShoreline(landGroups[1]!);
+
+                    let minD = Infinity;
+                    let bestPair: { a: { x: number, y: number }, b: { x: number, y: number } } | null = null;
+
+                    const ptsA = shoreA.length > 0 ? shoreA : landGroups[0]!;
+                    const ptsB = shoreB.length > 0 ? shoreB : landGroups[1]!;
+
+                    for (const a of ptsA) {
+                        for (const b of ptsB) {
+                            const d = Math.hypot(a.x - b.x, a.y - b.y);
+                            if (d < minD) {
+                                minD = d;
+                                bestPair = { a, b };
+                            }
+                        }
+                    }
+
+                    if (bestPair) {
+                        let x0 = bestPair.a.x;
+                        let y0 = bestPair.a.y;
+                        const x1 = bestPair.b.x;
+                        const y1 = bestPair.b.y;
+
+                        const dx = Math.abs(x1 - x0);
+                        const dy = Math.abs(y1 - y0);
+                        const sx = x0 < x1 ? 1 : -1;
+                        const sy = y0 < y1 ? 1 : -1;
+                        let err = dx - dy;
+
+                        while (true) {
+                            if (x0 >= 0 && x0 <= 50 && y0 >= 0 && y0 <= 50) {
+                                if (this.mapGrid[y0]?.[x0] === 1) {
+                                    this.mapGrid[y0]![x0] = 4; // 橋を追加
+                                }
+                            }
+                            if (x0 === x1 && y0 === y1) break;
+                            const e2 = 2 * err;
+                            if (e2 > -dy) {
+                                err -= dy;
+                                x0 += sx;
+                            }
+                            if (e2 < dx) {
+                                err += dx;
+                                y0 += sy;
+                            }
+                        }
+                    } else {
+                        break; // ありえないがデッドロック防止のため
+                    }
+                }
+            }
         },
 
         createBase(id: string, owner: Owner, rank: Rank, isCore: boolean, x: number, y: number): Base {
@@ -589,7 +704,7 @@ export const useGameStore = defineStore('game', {
         },
 
         sendUnits(sourceId: string, targetId: string): void {
-            if (this.isGameOver) return
+            if (this.status !== 'playing') return
 
             const source = this.bases.find((b: Base) => b.id === sourceId)
             const target = this.bases.find((b: Base) => b.id === targetId)
@@ -616,8 +731,17 @@ export const useGameStore = defineStore('game', {
             })
         },
 
+        stopUnit(unitId: string): void {
+            const unitIndex = this.units.findIndex((u) => u.id === unitId)
+            if (unitIndex !== -1) {
+                const unit = this.units[unitIndex]!
+                // ユニットのパワーを元の拠点に戻す処理などを入れる場合はここに記述
+                this.units.splice(unitIndex, 1)
+            }
+        },
+
         update(deltaSeconds: number): void {
-            if (this.isGameOver) return
+            if (this.status !== 'playing') return
 
             // 1. Production & Easing
             for (const base of this.bases) {
