@@ -302,7 +302,10 @@ export const useGameStore = defineStore('game', {
             this.bases.push(this.createBase('c-core', 'cpu', 1, true, cCoreX, cCoreY))
 
             // 2. Create Neutral Bases
-            const baseCount = Math.floor(Math.random() * 7) + 8 // 10 to 15 total bases
+            // Total bases will be precisely 8 to 14 (including 2 cores)
+            const minTotalBases = 8
+            const maxTotalBases = 14
+            const baseCount = Math.floor(Math.random() * (maxTotalBases - minTotalBases + 1)) + minTotalBases
             let attempts = 0
             while (this.bases.length < baseCount && attempts < 200) {
                 attempts++

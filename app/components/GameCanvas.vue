@@ -190,20 +190,26 @@ onMounted(async () => {
 
   // Buildings: 32x32 sprites at y=320 row (grid row 19-20)
   // Building A (城): col 0 → (16, 320)
-  const playerCoreTexture = new PIXI.Texture({
+  const baseRank3Texture = new PIXI.Texture({
     source: mapTilesetTexture,
     frame: new PIXI.Rectangle(16, 320, 32, 32)
   })
-  // Building B (砦): col 1 → (48, 320) ※主要拠点は城を使用
-  const cpuCoreTexture = new PIXI.Texture({
+  // Building B (砦): col 1 → (48, 320)
+  const baseRank2Texture = new PIXI.Texture({
     source: mapTilesetTexture,
-    frame: new PIXI.Rectangle(16, 320, 32, 32)
+    frame: new PIXI.Rectangle(48, 320, 32, 32)
   })
   // Building C (集落): col 2 → (80, 320)
-  const neutralBaseTexture = new PIXI.Texture({
+  const baseRank1Texture = new PIXI.Texture({
     source: mapTilesetTexture,
     frame: new PIXI.Rectangle(80, 320, 32, 32)
   })
+
+  function getBaseTexture(base: Base) {
+    if (base.isCore || base.rank >= 3) return baseRank3Texture
+    if (base.rank === 2) return baseRank2Texture
+    return baseRank1Texture
+  }
 
   const playerAnimations = {
     idle: createFrames(playerBaseTexture, 80),
@@ -390,12 +396,7 @@ onMounted(async () => {
         container.addChild(highlight)
 
         // Base Sprite from Tileset
-        let texture = neutralBaseTexture
-        if (base.isCore) {
-          texture = base.owner === 'player' ? playerCoreTexture : cpuCoreTexture
-        }
-        
-        const baseSprite = new PIXI.Sprite(texture)
+        const baseSprite = new PIXI.Sprite(getBaseTexture(base))
         baseSprite.name = 'sprite'
         baseSprite.anchor.set(0.5, 0.8) // Align base of building to point
         baseSprite.scale.set(1.5)
@@ -439,12 +440,8 @@ onMounted(async () => {
       const text = container.getChildByName('text') as PIXI.Text
       const rankText = container.getChildByName('rank') as PIXI.Text
 
-      // Update texture if owner changed
-      if (base.isCore) {
-        sprite.texture = base.owner === 'player' ? playerCoreTexture : cpuCoreTexture
-      } else {
-        sprite.texture = neutralBaseTexture
-      }
+      // Update texture if owner or rank changed
+      sprite.texture = getBaseTexture(base)
       // Tint based on owner for clarity
       sprite.tint = OWNER_COLORS[base.owner]
 
