@@ -1,21 +1,46 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import * as PIXI from 'pixi.js'
-import { useGameStore, type Base, type Unit } from '~/stores/game'
+import { useGameStore } from '~/stores/game'
+import type { Base, Unit, Owner } from '~/stores/game'
+
+// Constants
+const LOGICAL_SIZE = 800
+const DOUBLE_CLICK_THRESHOLD = 200 // ms
+const SCALE_X = 2.0
+const SCALE_Y = 1.0
 
 const gameStore = useGameStore()
-const canvasRef = ref<HTMLDivElement | null>(null)
-let app: PIXI.Application | null = null
-let dragLine: PIXI.Graphics | null = null
+const canvasRef = ref<HTMLElement | null>(null)
+const contextMenuRef = ref<HTMLElement | null>(null)
+const mousePos = ref({ x: 0, y: 0 })
+const pointerDownPos = ref({ x: 0, y: 0 })
+const pointerDownEntityId = ref<string | null>(null)
 const draggingFromBaseId = ref<string | null>(null)
 const targetedBaseId = ref<string | null>(null)
 const multiSendTargetId = ref<string | null>(null)
 const selectedUnitId = ref<string | null>(null)
-const mousePos = ref({ x: 0, y: 0 })
 
+// Context Menu State
+const contextMenu = ref<{
+  visible: boolean;
+  x: number;
+  y: number;
+  type: 'base' | 'unit' | null;
+  targetId: string | null;
+}>({
+  visible: false,
+  x: 0,
+  y: 0,
+  type: null,
+  targetId: null
+})
+
+let app: PIXI.Application | null = null
+let dragLine: PIXI.Graphics | null = null
 let lastClickTime = 0
 let lastClickedBaseId = ''
-const DOUBLE_CLICK_THRESHOLD = 300
+let clickTimeout: ReturnType<typeof setTimeout> | null = null
 
 const OWNER_COLORS: Record<Owner, number> = {
   player: 0x3498db,
@@ -36,17 +61,10 @@ const ZONE_COLORS: Record<Owner, number> = {
 }
 
 // Isometric Coordinate Transformation Constants
-const LOGICAL_SIZE = 800
 const TILE_WIDTH_PX = 64
 const TILE_HEIGHT_PX = 32
 const ISO_CENTER_X = 960
 const ISO_CENTER_Y = 540
-
-// Scale 800 logical units to ~1600 pixels on screen (diagonal)
-// So 1 logical unit = 2 pixels in full-width, or 1 pixel in half-width
-const SCALE_X = 2.0 
-const SCALE_Y = 1.0
-
 // ハイライト楕円のパラメータ（スクリーン座標）
 const HIGHLIGHT_HW = 28   // 横半径
 const HIGHLIGHT_HH = 20   // 縦半径
@@ -335,13 +353,22 @@ onMounted(async () => {
         container.eventMode = 'static'
         container.cursor = 'pointer'
 
-        container.on('pointerdown', () => {
+        container.on('pointerdown', (e: PIXI.FederatedPointerEvent) => {
+          if (clickTimeout) {
+            clearTimeout(clickTimeout)
+            clickTimeout = null
+          }
+          
+          pointerDownPos.value = { x: e.clientX, y: e.clientY }
+          pointerDownEntityId.value = base.id
+          
           const now = Date.now()
           const isDoubleClick = (now - lastClickTime < DOUBLE_CLICK_THRESHOLD) && (lastClickedBaseId === base.id)
           
           if (isDoubleClick) {
             multiSendTargetId.value = base.id
             draggingFromBaseId.value = null
+            pointerDownEntityId.value = null // Cancel context menu for this double click
           } else if (base.owner === 'player') {
             draggingFromBaseId.value = base.id
             multiSendTargetId.value = null
@@ -480,7 +507,13 @@ onMounted(async () => {
         container.hitArea = new PIXI.Circle(0, -20, 20)
         container.on('pointerdown', (e: PIXI.FederatedPointerEvent) => {
           e.stopPropagation()
+          pointerDownPos.value = { x: e.clientX, y: e.clientY }
           selectedUnitId.value = selectedUnitId.value === unit.id ? null : unit.id
+          if (unit.owner === 'player') {
+             pointerDownEntityId.value = `unit:${unit.id}`
+          } else {
+             pointerDownEntityId.value = null
+          }
         })
 
         const text = new PIXI.Text({
@@ -536,7 +569,12 @@ onMounted(async () => {
         
         if (sprite.textures !== targetAnim) {
           sprite.textures = targetAnim
-          sprite.play()
+        }
+
+        if (gameStore.status === 'playing') {
+          if (!sprite.playing) sprite.play()
+        } else {
+          if (sprite.playing) sprite.stop()
         }
       }
     })
@@ -788,9 +826,76 @@ onMounted(async () => {
   window.addEventListener('pointerup', handleGlobalPointerUp)
 })
 
-const handleGlobalPointerUp = () => {
+const handleGlobalPointerUp = async (e: PointerEvent) => {
   const logicalMouse = fromIso(mousePos.value.x, mousePos.value.y)
+  const distMoved = Math.hypot(e.clientX - pointerDownPos.value.x, e.clientY - pointerDownPos.value.y)
+  const isClick = distMoved < 10
+
+  if (isClick && pointerDownEntityId.value) {
+    // Determine target based on what was clicked
+    let type: 'base' | 'unit' = 'base'
+    let targetId = pointerDownEntityId.value
+
+    if (targetId.startsWith('unit:')) {
+       type = 'unit'
+       targetId = targetId.split(':')[1]!
+    }
+
+    const clickX = e.clientX
+    const clickY = e.clientY
+
+    // Use a small timeout to distinguish from double clicks
+    if (clickTimeout) clearTimeout(clickTimeout)
+    
+    clickTimeout = setTimeout(async () => {
+      clickTimeout = null
+      
+      contextMenu.value = {
+        visible: true,
+        x: clickX,
+        y: clickY,
+        type,
+        targetId
+      }
+      
+      // Position adjustments to keep menu fully in viewport
+      await nextTick()
+      if (contextMenuRef.value) {
+         const rect = contextMenuRef.value.getBoundingClientRect()
+         const viewportWidth = window.innerWidth
+         const viewportHeight = window.innerHeight
+
+         let newX = clickX
+         let newY = clickY
+
+         if (newX + rect.width > viewportWidth - 10) {
+             newX = viewportWidth - rect.width - 10
+         }
+         if (newY + rect.height > viewportHeight - 10) {
+             newY = viewportHeight - rect.height - 10
+         }
+         
+         contextMenu.value.x = newX
+         contextMenu.value.y = newY
+      }
+
+      gameStore.pauseGame()
+    }, DOUBLE_CLICK_THRESHOLD)
+
+    draggingFromBaseId.value = null
+    pointerDownEntityId.value = null
+    return // Stop further drag processing
+  }
   
+  // Clear tracker
+  pointerDownEntityId.value = null
+
+  // Close context menu if clicking anywhere else
+  if (contextMenu.value.visible) {
+     closeContextMenu()
+     // Wait for click to clear if menu was open
+  }
+
   if (multiSendTargetId.value) {
     const targetId = multiSendTargetId.value
     gameStore.bases.forEach(base => {
@@ -799,7 +904,7 @@ const handleGlobalPointerUp = () => {
       }
     })
     multiSendTargetId.value = null
-  } else if (draggingFromBaseId.value) {
+  } else if (draggingFromBaseId.value && !draggingFromBaseId.value.startsWith('unit:')) {
     let closestBase: any = null
     let minDist = Infinity
 
@@ -816,7 +921,25 @@ const handleGlobalPointerUp = () => {
     }
 
     draggingFromBaseId.value = null
+  } else if (draggingFromBaseId.value?.startsWith('unit:')) {
+    draggingFromBaseId.value = null
   }
+}
+
+const handleContextMenuAction = (action: string) => {
+  if (action === 'upgrade' && contextMenu.value.type === 'base' && contextMenu.value.targetId) {
+    gameStore.upgradeBase(contextMenu.value.targetId)
+  } else if (action === 'stop' && contextMenu.value.type === 'unit' && contextMenu.value.targetId) {
+    gameStore.stopUnit(contextMenu.value.targetId)
+  }
+  closeContextMenu()
+}
+
+const closeContextMenu = () => {
+  contextMenu.value.visible = false
+  contextMenu.value.targetId = null
+  contextMenu.value.type = null
+  gameStore.resumeGame()
 }
 
 onUnmounted(() => {
@@ -828,7 +951,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="game-container">
+  <div class="game-container" @contextmenu.prevent>
     <div ref="canvasRef" class="canvas-wrapper"></div>
     <div v-if="gameStore.isGameOver" class="overlay">
       <div class="modal">
@@ -837,6 +960,38 @@ onUnmounted(() => {
           <button @click="gameStore.initGame">Restart</button>
           <button @click="gameStore.backToTitle" class="secondary">Back to Title</button>
         </div>
+      </div>
+    </div>
+    
+    <!-- Context Menu Overlay -->
+    <div 
+      v-if="contextMenu.visible"
+      ref="contextMenuRef"
+      class="context-menu"
+      :style="{ top: contextMenu.y + 'px', left: contextMenu.x + 'px' }"
+    >
+      <div class="context-menu-content">
+        <template v-if="contextMenu.type === 'base'">
+          <div class="context-menu-header">拠点メニュー</div>
+          <button class="context-menu-item" @click="handleContextMenuAction('upgrade')">
+            <span class="icon">⬆️</span>
+            <span>アップグレード</span>
+          </button>
+        </template>
+        
+        <template v-if="contextMenu.type === 'unit'">
+          <div class="context-menu-header">ユニットメニュー</div>
+          <button class="context-menu-item" @click="handleContextMenuAction('stop')">
+            <span class="icon">🛑</span>
+            <span>停止 (ポイント回収)</span>
+          </button>
+        </template>
+        
+        <div class="context-separator"></div>
+        <button class="context-menu-item" @click="closeContextMenu">
+          <span class="icon">✖️</span>
+          <span>閉じる</span>
+        </button>
       </div>
     </div>
   </div>
@@ -914,5 +1069,69 @@ button:hover {
 
 button.secondary:hover {
   background: #95a5a6;
+}
+
+/* Context Menu Styles */
+.context-menu {
+  position: fixed;
+  z-index: 1000;
+  background-color: #1a1b1e;
+  border: 1px solid #3a3b3e;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  min-width: 200px;
+  padding: 6px 0;
+  color: #e4e5e7;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  user-select: none;
+}
+
+.context-menu-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.context-menu-header {
+  padding: 8px 16px 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #888;
+  letter-spacing: 0.05em;
+}
+
+.context-separator {
+  height: 1px;
+  background-color: #3a3b3e;
+  margin: 4px 0;
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 16px;
+  background: none;
+  border: none;
+  color: #e4e5e7;
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+  margin: 0;
+  transition: background-color 0.1s ease;
+  border-radius: 0;
+}
+
+.context-menu-item:hover {
+  background-color: #313236;
+  color: #ffffff;
+  transform: none;
+}
+
+.context-menu-item .icon {
+  font-size: 1.1rem;
+  width: 20px;
+  text-align: center;
 }
 </style>
