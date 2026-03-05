@@ -10,6 +10,7 @@ let dragLine: PIXI.Graphics | null = null
 const draggingFromBaseId = ref<string | null>(null)
 const targetedBaseId = ref<string | null>(null)
 const multiSendTargetId = ref<string | null>(null)
+const selectedUnitId = ref<string | null>(null)
 const mousePos = ref({ x: 0, y: 0 })
 
 let lastClickTime = 0
@@ -263,6 +264,9 @@ onMounted(async () => {
   dragLine = new PIXI.Graphics()
   uiLayer.addChild(dragLine)
 
+  const unitPathGfx = new PIXI.Graphics()
+  uiLayer.addChild(unitPathGfx)
+
   // Mapping from baseId/unitId to visuals for efficient updates
   const baseVisuals = new Map<string, { container: PIXI.Container, zone: PIXI.Graphics, highlight: PIXI.Graphics }>()
   const unitVisuals = new Map<string, { container: PIXI.Container, sprite: PIXI.AnimatedSprite, text: PIXI.Text }>()
@@ -316,6 +320,7 @@ onMounted(async () => {
             draggingFromBaseId.value = base.id
             multiSendTargetId.value = null
           }
+          selectedUnitId.value = null
           
           lastClickTime = now
           lastClickedBaseId = base.id
@@ -443,6 +448,15 @@ onMounted(async () => {
         
         container.addChild(sprite)
 
+        // ユニットクリックで選択
+        container.eventMode = 'static'
+        container.cursor = 'pointer'
+        container.hitArea = new PIXI.Circle(0, -20, 20)
+        container.on('pointerdown', (e: PIXI.FederatedPointerEvent) => {
+          e.stopPropagation()
+          selectedUnitId.value = selectedUnitId.value === unit.id ? null : unit.id
+        })
+
         const text = new PIXI.Text({
           text: Math.ceil(unit.power).toString(),
           style: { fontSize: 10, fill: 0xffffff, stroke: { color: 0x000000, width: 2 } }
@@ -523,6 +537,120 @@ onMounted(async () => {
             renderArrow(dragLine!, source, target || fromIso(mousePos.value.x, mousePos.value.y), true, !!target)
           }
         }
+      }
+    }
+
+    // Render selected unit path
+    unitPathGfx.clear()
+    if (selectedUnitId.value) {
+      const selUnit = gameStore.units.find(u => u.id === selectedUnitId.value)
+      if (selUnit && selUnit.path.length > 1) {
+        const color = OWNER_COLORS[selUnit.owner]
+        const selVisuals = unitVisuals.get(selUnit.id)
+
+        // 選択枠（楕円）
+        if (selVisuals) {
+          const uPos = toIso(selUnit.x, selUnit.y)
+          unitPathGfx.setStrokeStyle({ width: 5, color: 0x000000, alpha: 1.0 }) // 黒縁
+          unitPathGfx.ellipse(uPos.x, uPos.y + HIGHLIGHT_OFFSET_Y, 16, 12)
+          unitPathGfx.stroke()
+          
+          unitPathGfx.setStrokeStyle({ width: 3, color, alpha: 1.0 })
+          unitPathGfx.ellipse(uPos.x, uPos.y + HIGHLIGHT_OFFSET_Y, 16, 12)
+          unitPathGfx.stroke()
+        }
+
+        // 目標拠点の枠
+        const targetBase = gameStore.bases.find(b => b.id === selUnit.targetId)
+        if (targetBase) {
+          const tPos = toIso(targetBase.x, targetBase.y)
+          unitPathGfx.setStrokeStyle({ width: 5, color: 0x000000, alpha: 1.0 }) // 黒縁
+          unitPathGfx.ellipse(tPos.x, tPos.y + HIGHLIGHT_OFFSET_Y, HIGHLIGHT_HW, HIGHLIGHT_HH)
+          unitPathGfx.stroke()
+
+          unitPathGfx.setStrokeStyle({ width: 3, color, alpha: 1.0 })
+          unitPathGfx.ellipse(tPos.x, tPos.y + HIGHLIGHT_OFFSET_Y, HIGHLIGHT_HW, HIGHLIGHT_HH)
+          unitPathGfx.stroke()
+        }
+
+        // パスルート描画（枠から枠まで）
+        const startIdx = selUnit.pathIndex
+        const startIso = toIso(selUnit.x, selUnit.y)
+
+        // 全ウェイポイントをISO座標に変換
+        const isoPoints: { x: number; y: number }[] = [startIso]
+        for (let pi = startIdx + 1; pi < selUnit.path.length; pi++) {
+          const wp = selUnit.path[pi]!
+          isoPoints.push(toIso(wp.x, wp.y))
+        }
+
+        if (isoPoints.length >= 2) {
+          // 楕円が接触していたら線と矢印を省略
+          const lastPt = isoPoints[isoPoints.length - 1]!
+          const distBetween = Math.hypot(lastPt.x - startIso.x, (lastPt.y + HIGHLIGHT_OFFSET_Y) - (startIso.y + HIGHLIGHT_OFFSET_Y))
+          const touchThreshold = (16 + HIGHLIGHT_HW) // ユニット楕円横半径 + 目標楕円横半径
+          if (distBetween > touchThreshold) {
+            // 始点: ユニット楕円の外周から
+            const firstNext = isoPoints[1]!
+            const startAngle = Math.atan2(firstNext.y - (startIso.y + HIGHLIGHT_OFFSET_Y), firstNext.x - startIso.x)
+            const startEdge = ellipseEdge(startIso.x, startIso.y + HIGHLIGHT_OFFSET_Y, 16, 12, startAngle)
+
+            // 終点: 目標拠点の楕円外周まで
+            const prevPt = isoPoints[isoPoints.length - 2]!
+            const endAngle = Math.atan2(prevPt.y - (lastPt.y + HIGHLIGHT_OFFSET_Y), prevPt.x - lastPt.x)
+            const endEdge = targetBase
+              ? ellipseEdge(lastPt.x, lastPt.y + HIGHLIGHT_OFFSET_Y, HIGHLIGHT_HW, HIGHLIGHT_HH, endAngle)
+              : lastPt
+
+            // 線を描画（黒縁）
+            unitPathGfx.setStrokeStyle({ width: 7, color: 0x000000, alpha: 1.0 })
+            unitPathGfx.moveTo(startEdge.x, startEdge.y)
+            for (let pi = 1; pi < isoPoints.length - 1; pi++) {
+              unitPathGfx.lineTo(isoPoints[pi]!.x, isoPoints[pi]!.y)
+            }
+            unitPathGfx.lineTo(endEdge.x, endEdge.y)
+            unitPathGfx.stroke()
+
+            // 線を描画（メイン）
+            unitPathGfx.setStrokeStyle({ width: 5, color, alpha: 1.0 })
+            unitPathGfx.moveTo(startEdge.x, startEdge.y)
+            for (let pi = 1; pi < isoPoints.length - 1; pi++) {
+              unitPathGfx.lineTo(isoPoints[pi]!.x, isoPoints[pi]!.y)
+            }
+            unitPathGfx.lineTo(endEdge.x, endEdge.y)
+            unitPathGfx.stroke()
+
+            // 終端の矢印
+            const arrowAngle = Math.atan2(endEdge.y - prevPt.y, endEdge.x - prevPt.x)
+            const headLen = 16
+            const p1x = endEdge.x, p1y = endEdge.y
+            const p2x = endEdge.x - headLen * Math.cos(arrowAngle - Math.PI / 6)
+            const p2y = endEdge.y - headLen * Math.sin(arrowAngle - Math.PI / 6)
+            const p3x = endEdge.x - headLen * Math.cos(arrowAngle + Math.PI / 6)
+            const p3y = endEdge.y - headLen * Math.sin(arrowAngle + Math.PI / 6)
+
+            // 黒縁
+            unitPathGfx.setStrokeStyle({ width: 3, color: 0x000000, alpha: 1.0, join: 'round' })
+            unitPathGfx.beginPath()
+            unitPathGfx.moveTo(p1x, p1y)
+            unitPathGfx.lineTo(p2x, p2y)
+            unitPathGfx.lineTo(p3x, p3y)
+            unitPathGfx.closePath()
+            unitPathGfx.stroke()
+
+            // メイン色塗りつぶし
+            unitPathGfx.setStrokeStyle({ width: 0 })
+            unitPathGfx.beginPath()
+            unitPathGfx.moveTo(p1x, p1y)
+            unitPathGfx.lineTo(p2x, p2y)
+            unitPathGfx.lineTo(p3x, p3y)
+            unitPathGfx.closePath()
+            unitPathGfx.fill({ color, alpha: 1.0 })
+          }
+        }
+      } else {
+        // ユニットが消えたら選択解除
+        selectedUnitId.value = null
       }
     }
   })
@@ -613,6 +741,11 @@ onMounted(async () => {
           }
         }
       }
+    })
+
+    // 背景クリックでユニット選択解除
+    app.stage.on('pointerdown', () => {
+      selectedUnitId.value = null
     })
   }
 
