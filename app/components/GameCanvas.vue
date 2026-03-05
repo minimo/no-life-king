@@ -78,7 +78,7 @@ function createFrames(texture: PIXI.Texture, yOffset: number, count = 4) {
   const frames = []
   for (let i = 0; i < count; i++) {
     frames.push(new PIXI.Texture({
-      source: texture,
+      source: texture.source,
       frame: new PIXI.Rectangle(i * 64, yOffset, 64, 64)
     }))
   }
@@ -456,8 +456,16 @@ onMounted(async () => {
         const source = gameStore.bases.find(b => b.id === unit.sourceId)
         const target = gameStore.bases.find(b => b.id === unit.targetId)
         
-        const isMovingRight = target && source ? target.x > source.x : false
-        const isMovingUp = target && source ? target.y < source.y : false
+        let isMovingRight = false
+        let isMovingUp = false
+
+        if (target && source) {
+          // Use screen-space (isometric) coordinates to determine visual direction
+          const sPos = toIso(source.x, source.y)
+          const tPos = toIso(target.x, target.y)
+          isMovingRight = tPos.x > sPos.x
+          isMovingUp = tPos.y < sPos.y
+        }
         
         // Flip sprite for right movement (original is left-facing: scale.x = 1.5)
         sprite.scale.x = isMovingRight ? -1.5 : 1.5
@@ -470,6 +478,7 @@ onMounted(async () => {
           // Row 2 (attackDown key mapping to Row 2 frames) for Up, Row 1 (attackUp key) for Down/Parallel
           targetAnim = isMovingUp ? anims.attackDown : anims.attackUp
         } else {
+          // Row 2 (walkDown key) for Up, Row 1 (walkUp key) for Down/Parallel
           targetAnim = isMovingUp ? anims.walkDown : anims.walkUp
         }
         
