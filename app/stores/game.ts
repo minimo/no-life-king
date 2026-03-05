@@ -50,26 +50,47 @@ export const RANK_CONFIG = {
 const UNIT_SPEED = 30 // px/sec
 
 /** ユニット現在位置の地形タイルから速度倍率を返す */
-function getTerrainSpeedMultiplier(mapGrid: number[][], worldX: number, worldY: number, owner: Owner): number {
+function getTerrainSpeedMultiplier(mapGrid: number[][], worldX: number, worldY: number, owner: Owner, bases: Base[]): number {
     const gx = Math.round(worldX / 16)
     const gy = Math.round(worldY / 16)
     if (gy < 0 || gy > 50 || gx < 0 || gx > 50) return 1.0
     const tile = mapGrid[gy]?.[gx] ?? 0
 
+    // 砦の影響範囲内か判定
+    let inZone = false
+    for (const base of bases) {
+        if (base.owner !== 'neutral') {
+            const dist = Math.hypot(worldX - base.x, worldY - base.y)
+            if (dist <= base.currentZoneRadius) {
+                inZone = true
+                break
+            }
+        }
+    }
+
+    let mult = 1.0
+
     // 水
-    if (tile === 1) return owner === 'cpu' ? 0.1 : 0.4
+    if (tile === 1) {
+        mult = (inZone || owner !== 'cpu') ? 0.4 : 0.1
+    }
     // 橋
-    if (tile === 4) return 1.0
+    else if (tile === 4) { mult = 1.0 }
     // 低山 (21-22)
-    if (tile === 21 || tile === 22) return 0.5
+    else if (tile === 21 || tile === 22) { mult = 0.5 }
     // 高山 (23-24)
-    if (tile === 23 || tile === 24) return 0.35
+    else if (tile === 23 || tile === 24) { mult = 0.35 }
     // 木・疎 (31-33)
-    if (tile >= 31 && tile <= 33) return 0.85
+    else if (tile >= 31 && tile <= 33) { mult = 0.85 }
     // 木・密 (34-35)
-    if (tile === 34 || tile === 35) return 0.7
-    // 草地 or その他
-    return 1.0
+    else if (tile === 34 || tile === 35) { mult = 0.7 }
+
+    // 砦の影響範囲内ならペナルティを50%軽減（倍率を1.0に寄せる）
+    if (inZone && mult < 1.0) {
+        mult = mult + (1.0 - mult) * 0.5
+    }
+
+    return mult
 }
 
 export const useGameStore = defineStore('game', {
@@ -500,7 +521,7 @@ export const useGameStore = defineStore('game', {
                             const dy = targetUnit.y - unit.y
                             const dist = Math.hypot(dx, dy)
                             if (dist > 2) {
-                                const pursuitSpeedMult = getTerrainSpeedMultiplier(this.mapGrid, unit.x, unit.y, unit.owner)
+                                const pursuitSpeedMult = getTerrainSpeedMultiplier(this.mapGrid, unit.x, unit.y, unit.owner, this.bases)
                                 unit.x += (dx / dist) * UNIT_SPEED * pursuitSpeedMult * deltaSeconds
                                 unit.y += (dy / dist) * UNIT_SPEED * pursuitSpeedMult * deltaSeconds
                             }
@@ -509,7 +530,7 @@ export const useGameStore = defineStore('game', {
                         }
                     } else {
                         // Regular movement towards base
-                        const moveSpeedMult = getTerrainSpeedMultiplier(this.mapGrid, unit.x, unit.y, unit.owner)
+                        const moveSpeedMult = getTerrainSpeedMultiplier(this.mapGrid, unit.x, unit.y, unit.owner, this.bases)
                         unit.progress += (deltaSeconds * moveSpeedMult) / unit.duration
                         const source = this.bases.find(b => b.id === unit.sourceId)
                         const target = this.bases.find(b => b.id === unit.targetId)
