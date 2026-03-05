@@ -735,8 +735,24 @@ export const useGameStore = defineStore('game', {
             const unitIndex = this.units.findIndex((u) => u.id === unitId)
             if (unitIndex !== -1) {
                 const unit = this.units[unitIndex]!
-                // ユニットのパワーを元の拠点に戻す処理などを入れる場合はここに記述
+                // 派遣元の拠点がまだ自軍のものであれば、パワーの半分を拠点に還元する
+                const source = this.bases.find(b => b.id === unit.sourceId)
+                if (source && source.owner === unit.owner) {
+                    source.production = Math.min(source.productionCap, source.production + unit.power * 0.5)
+                }
                 this.units.splice(unitIndex, 1)
+            }
+        },
+
+        pauseGame(): void {
+            if (this.status === 'playing') {
+                this.status = 'paused'
+            }
+        },
+
+        resumeGame(): void {
+            if (this.status === 'paused') {
+                this.status = 'playing'
             }
         },
 
