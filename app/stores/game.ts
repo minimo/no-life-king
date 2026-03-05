@@ -290,39 +290,7 @@ export const useGameStore = defineStore('game', {
             const margin = 100
             const minDistance = 100
 
-            // 1. Create Core Bases
-            // Player Core (Bottom-Left map corner -> Screen Left)
-            const pCoreX = margin
-            const pCoreY = size - margin
-            this.bases.push(this.createBase('p-core', 'player', 1, true, pCoreX, pCoreY))
-
-            // CPU Core (Top-Right map corner -> Screen Right)
-            const cCoreX = size - margin
-            const cCoreY = margin
-            this.bases.push(this.createBase('c-core', 'cpu', 1, true, cCoreX, cCoreY))
-
-            // 2. Create Neutral Bases
-            // Total bases will be precisely 8 to 14 (including 2 cores)
-            const minTotalBases = 8
-            const maxTotalBases = 14
-            const baseCount = Math.floor(Math.random() * (maxTotalBases - minTotalBases + 1)) + minTotalBases
-            let attempts = 0
-            while (this.bases.length < baseCount && attempts < 200) {
-                attempts++
-                // Place bases at the player side (left) or cpu side (right) map quadrants
-                const isLeftEdge = Math.random() < 0.5
-                const x = isLeftEdge ? margin + Math.random() * 300 : size - margin - Math.random() * 300
-                const y = isLeftEdge ? size - margin - Math.random() * 300 : margin + Math.random() * 300
-
-                // Check distance from existing bases
-                const tooClose = this.bases.some(b => Math.hypot(b.x - x, b.y - y) < minDistance)
-                if (!tooClose) {
-                    const id = `n${this.bases.length - 1}`
-                    this.bases.push(this.createBase(id, 'neutral', 1, false, x, y))
-                }
-            }
-
-            // 3. Generate Map (51x51 logic grid for 800x800 area with step 16)
+            // 1. Generate Map (51x51 logic grid for 800x800 area with step 16)
             const noise2D_elev = createNoise2D()
             const noise2D_moist = createNoise2D()
             this.mapGrid = Array(51).fill(0).map(() => Array(51).fill(0))
@@ -348,7 +316,7 @@ export const useGameStore = defineStore('game', {
                 }
             }
 
-            // 4. Carve Rivers
+            // 2. Carve Rivers
             const numRivers = 1 + Math.floor(Math.random() * 2) // 1 to 2
             const riverPoints: { x: number, y: number }[] = []
 
@@ -553,23 +521,6 @@ export const useGameStore = defineStore('game', {
                 }
             }
 
-            // Clear area around bases
-            this.bases.forEach(base => {
-                const gridX = Math.round(base.x / 16)
-                const gridY = Math.round(base.y / 16)
-                for (let dy = -2; dy <= 2; dy++) {
-                    for (let dx = -2; dx <= 2; dx++) {
-                        const ny = gridY + dy
-                        const nx = gridX + dx
-                        if (ny >= 0 && ny <= 50 && nx >= 0 && nx <= 50) {
-                            if (this.mapGrid[ny]![nx] !== 1) { // Do not erase rivers
-                                this.mapGrid[ny]![nx] = 0 // Grass
-                            }
-                        }
-                    }
-                }
-            })
-
             // 川で完全に分断された陸地（一定以上の広さ）がある場合は、橋で結ぶ
             let landsConnected = false;
             let landConnectAttempts = 0;
@@ -687,6 +638,74 @@ export const useGameStore = defineStore('game', {
                     }
                 }
             }
+
+            // 3. Create Bases
+            const isValidBaseLocation = (wx: number, wy: number) => {
+                const gx = Math.round(wx / 16)
+                const gy = Math.round(wy / 16)
+                if (gy >= 0 && gy <= 50 && gx >= 0 && gx <= 50) {
+                    const tile = this.mapGrid[gy]![gx]
+                    if (tile === 1 || tile === 4) return false // Water or Bridge
+                }
+                return true
+            }
+
+            // A helper to place a core base, avoiding water
+            const placeCore = (id: string, owner: Owner, startX: number, startY: number, stepX: number, stepY: number) => {
+                let bx = startX
+                let by = startY
+                let attempts = 0
+                while (!isValidBaseLocation(bx, by) && attempts < 50) {
+                    bx += stepX
+                    by += stepY
+                    attempts++
+                }
+                this.bases.push(this.createBase(id, owner, 1, true, bx, by))
+            }
+
+            // Player Core (Bottom-Left map corner)
+            placeCore('p-core', 'player', margin, size - margin, 16, -16)
+
+            // CPU Core (Top-Right map corner)
+            placeCore('c-core', 'cpu', size - margin, margin, -16, 16)
+
+            // Create Neutral Bases
+            const minTotalBases = 8
+            const maxTotalBases = 14
+            const baseCount = Math.floor(Math.random() * (maxTotalBases - minTotalBases + 1)) + minTotalBases
+            let neutralAttempts = 0
+            while (this.bases.length < baseCount && neutralAttempts < 500) {
+                neutralAttempts++
+                const x = margin + Math.random() * (size - margin * 2)
+                const y = margin + Math.random() * (size - margin * 2)
+
+                // Check terrain validity
+                if (!isValidBaseLocation(x, y)) continue
+
+                // Check distance from existing bases
+                const tooClose = this.bases.some(b => Math.hypot(b.x - x, b.y - y) < minDistance)
+                if (!tooClose) {
+                    const id = `n${this.bases.length - 1}`
+                    this.bases.push(this.createBase(id, 'neutral', 1, false, x, y))
+                }
+            }
+
+            // 4. Clear area around bases
+            this.bases.forEach(base => {
+                const gridX = Math.round(base.x / 16)
+                const gridY = Math.round(base.y / 16)
+                for (let dy = -2; dy <= 2; dy++) {
+                    for (let dx = -2; dx <= 2; dx++) {
+                        const ny = gridY + dy
+                        const nx = gridX + dx
+                        if (ny >= 0 && ny <= 50 && nx >= 0 && nx <= 50) {
+                            if (this.mapGrid[ny]![nx] !== 1 && this.mapGrid[ny]![nx] !== 4) { // Do not erase rivers or bridges
+                                this.mapGrid[ny]![nx] = 0 // Grass
+                            }
+                        }
+                    }
+                }
+            })
         },
 
         createBase(id: string, owner: Owner, rank: Rank, isCore: boolean, x: number, y: number): Base {
