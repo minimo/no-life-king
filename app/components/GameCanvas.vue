@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, watch, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import * as PIXI from 'pixi.js'
-import { useGameStore } from '~/stores/game'
-import type { Base, Unit, Owner } from '~/stores/game'
+import { useGameStore, RANK_CONFIG } from '~/stores/game'
+import type { Base, Unit, Owner, Rank } from '~/stores/game'
 
 // Constants
 const LOGICAL_SIZE = 800
-const DOUBLE_CLICK_THRESHOLD = 200 // ms
+const DOUBLE_CLICK_THRESHOLD = 300 // ms
+const LONG_PRESS_THRESHOLD = 500 // ms
 const SCALE_X = 2.0
 const SCALE_Y = 1.0
 
@@ -20,6 +21,7 @@ const draggingFromBaseId = ref<string | null>(null)
 const targetedBaseId = ref<string | null>(null)
 const multiSendTargetId = ref<string | null>(null)
 const selectedUnitId = ref<string | null>(null)
+const menuJustOpened = ref(false)
 
 // Context Menu State
 const contextMenu = ref<{
@@ -36,11 +38,21 @@ const contextMenu = ref<{
   targetId: null
 })
 
+const canUpgradeTargetBase = computed(() => {
+  if (contextMenu.value.type !== 'base' || !contextMenu.value.targetId) return false
+  const base = gameStore.bases.find((b: Base) => b.id === contextMenu.value.targetId)
+  if (!base || base.rank >= 3) return false
+  
+  const nextRank = (base.rank + 1) as Rank
+  const cost = RANK_CONFIG[nextRank === 2 ? 2 : 3].upgradeCost
+  return base.production >= cost
+})
+
 let app: PIXI.Application | null = null
 let dragLine: PIXI.Graphics | null = null
 let lastClickTime = 0
 let lastClickedBaseId = ''
-let clickTimeout: ReturnType<typeof setTimeout> | null = null
+let longPressTimeout: ReturnType<typeof setTimeout> | null = null
 
 const OWNER_COLORS: Record<Owner, number> = {
   player: 0x3498db,
@@ -360,9 +372,9 @@ onMounted(async () => {
         container.cursor = 'pointer'
 
         container.on('pointerdown', (e: PIXI.FederatedPointerEvent) => {
-          if (clickTimeout) {
-            clearTimeout(clickTimeout)
-            clickTimeout = null
+          if (longPressTimeout) {
+            clearTimeout(longPressTimeout)
+            longPressTimeout = null
           }
           
           pointerDownPos.value = { x: e.clientX, y: e.clientY }
@@ -378,6 +390,14 @@ onMounted(async () => {
             pointerDownEntityId.value = base.id // ALLOW MENU ONLY FOR PLAYER BASES
             draggingFromBaseId.value = base.id
             multiSendTargetId.value = null
+            
+            // start long press timeout
+            const clickX = e.clientX
+            const clickY = e.clientY
+            longPressTimeout = setTimeout(() => {
+                longPressTimeout = null
+                openContextMenuFunc('base', base.id, clickX, clickY)
+            }, LONG_PRESS_THRESHOLD)
           } else {
             pointerDownEntityId.value = null
           }
@@ -508,8 +528,20 @@ onMounted(async () => {
           e.stopPropagation()
           pointerDownPos.value = { x: e.clientX, y: e.clientY }
           selectedUnitId.value = selectedUnitId.value === unit.id ? null : unit.id
+          
+          if (longPressTimeout) {
+            clearTimeout(longPressTimeout)
+            longPressTimeout = null
+          }
+
           if (unit.owner === 'player') {
              pointerDownEntityId.value = `unit:${unit.id}`
+             const clickX = e.clientX
+             const clickY = e.clientY
+             longPressTimeout = setTimeout(() => {
+                longPressTimeout = null
+                openContextMenuFunc('unit', unit.id, clickX, clickY)
+             }, LONG_PRESS_THRESHOLD)
           } else {
              pointerDownEntityId.value = null
           }
@@ -823,64 +855,67 @@ onMounted(async () => {
   }
 
   window.addEventListener('pointerup', handleGlobalPointerUp)
+  window.addEventListener('pointermove', handleGlobalPointerMove)
 })
 
+const handleGlobalPointerMove = (e: PointerEvent) => {
+  if (longPressTimeout) {
+    const distMoved = Math.hypot(e.clientX - pointerDownPos.value.x, e.clientY - pointerDownPos.value.y)
+    if (distMoved > 10) {
+      clearTimeout(longPressTimeout)
+      longPressTimeout = null
+    }
+  }
+}
+
+const openContextMenuFunc = async (type: 'base' | 'unit', targetId: string, clickX: number, clickY: number) => {
+    contextMenu.value = {
+      visible: true,
+      x: clickX,
+      y: clickY,
+      type,
+      targetId
+    }
+    
+    await nextTick()
+    if (contextMenuRef.value) {
+       const rect = contextMenuRef.value.getBoundingClientRect()
+       const viewportWidth = window.innerWidth
+       const viewportHeight = window.innerHeight
+
+       let newX = clickX
+       let newY = clickY
+
+       if (newX + rect.width > viewportWidth - 10) {
+           newX = viewportWidth - rect.width - 10
+       }
+       if (newY + rect.height > viewportHeight - 10) {
+           newY = viewportHeight - rect.height - 10
+       }
+       
+       contextMenu.value.x = newX
+       contextMenu.value.y = newY
+    }
+
+    gameStore.pauseGame()
+    draggingFromBaseId.value = null
+    pointerDownEntityId.value = null
+    menuJustOpened.value = true
+}
+
 const handleGlobalPointerUp = async (e: PointerEvent) => {
+  if (longPressTimeout) {
+    clearTimeout(longPressTimeout)
+    longPressTimeout = null
+  }
+
   const logicalMouse = fromIso(mousePos.value.x, mousePos.value.y)
   const distMoved = Math.hypot(e.clientX - pointerDownPos.value.x, e.clientY - pointerDownPos.value.y)
   const isClick = distMoved < 10
 
   if (isClick && pointerDownEntityId.value) {
-    // Determine target based on what was clicked
-    let type: 'base' | 'unit' = 'base'
-    let targetId = pointerDownEntityId.value
-
-    if (targetId.startsWith('unit:')) {
-       type = 'unit'
-       targetId = targetId.split(':')[1]!
-    }
-
-    const clickX = e.clientX
-    const clickY = e.clientY
-
-    // Use a small timeout to distinguish from double clicks
-    if (clickTimeout) clearTimeout(clickTimeout)
-    
-    clickTimeout = setTimeout(async () => {
-      clickTimeout = null
-      
-      contextMenu.value = {
-        visible: true,
-        x: clickX,
-        y: clickY,
-        type,
-        targetId
-      }
-      
-      // Position adjustments to keep menu fully in viewport
-      await nextTick()
-      if (contextMenuRef.value) {
-         const rect = contextMenuRef.value.getBoundingClientRect()
-         const viewportWidth = window.innerWidth
-         const viewportHeight = window.innerHeight
-
-         let newX = clickX
-         let newY = clickY
-
-         if (newX + rect.width > viewportWidth - 10) {
-             newX = viewportWidth - rect.width - 10
-         }
-         if (newY + rect.height > viewportHeight - 10) {
-             newY = viewportHeight - rect.height - 10
-         }
-         
-         contextMenu.value.x = newX
-         contextMenu.value.y = newY
-      }
-
-      gameStore.pauseGame()
-    }, DOUBLE_CLICK_THRESHOLD)
-
+    // Normal single short click on a base/unit.
+    // Menus now trigger on long-press instead, so short-clicks do nothing but end dragging.
     draggingFromBaseId.value = null
     pointerDownEntityId.value = null
     return // Stop further drag processing
@@ -888,6 +923,11 @@ const handleGlobalPointerUp = async (e: PointerEvent) => {
   
   // Clear tracker
   pointerDownEntityId.value = null
+
+  if (menuJustOpened.value) {
+     menuJustOpened.value = false
+     return
+  }
 
   // Close context menu if clicking anywhere else
   if (contextMenu.value.visible) {
@@ -943,6 +983,7 @@ const closeContextMenu = () => {
 
 onUnmounted(() => {
   window.removeEventListener('pointerup', handleGlobalPointerUp)
+  window.removeEventListener('pointermove', handleGlobalPointerMove)
   if (app) {
     app.destroy(true, { children: true, texture: true })
   }
@@ -971,26 +1012,21 @@ onUnmounted(() => {
     >
       <div class="context-menu-content">
         <template v-if="contextMenu.type === 'base'">
-          <div class="context-menu-header">拠点メニュー</div>
-          <button class="context-menu-item" @click="handleContextMenuAction('upgrade')">
-            <span class="icon">⬆️</span>
+          <button 
+            class="context-menu-item" 
+            :class="{ disabled: !canUpgradeTargetBase }"
+            :disabled="!canUpgradeTargetBase"
+            @click="handleContextMenuAction('upgrade')"
+          >
             <span>アップグレード</span>
           </button>
         </template>
         
         <template v-if="contextMenu.type === 'unit'">
-          <div class="context-menu-header">ユニットメニュー</div>
           <button class="context-menu-item" @click="handleContextMenuAction('stop')">
-            <span class="icon">🛑</span>
             <span>停止 (ポイント回収)</span>
           </button>
         </template>
-        
-        <div class="context-separator"></div>
-        <button class="context-menu-item" @click="closeContextMenu">
-          <span class="icon">✖️</span>
-          <span>閉じる</span>
-        </button>
       </div>
     </div>
   </div>
@@ -1090,21 +1126,6 @@ button.secondary:hover {
   flex-direction: column;
 }
 
-.context-menu-header {
-  padding: 8px 16px 4px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  color: #888;
-  letter-spacing: 0.05em;
-}
-
-.context-separator {
-  height: 1px;
-  background-color: #3a3b3e;
-  margin: 4px 0;
-}
-
 .context-menu-item {
   display: flex;
   align-items: center;
@@ -1122,15 +1143,13 @@ button.secondary:hover {
   border-radius: 0;
 }
 
-.context-menu-item:hover {
+.context-menu-item:not(.disabled):hover {
   background-color: #313236;
   color: #ffffff;
-  transform: none;
 }
 
-.context-menu-item .icon {
-  font-size: 1.1rem;
-  width: 20px;
-  text-align: center;
+.context-menu-item.disabled {
+  color: #555;
+  cursor: not-allowed;
 }
 </style>
