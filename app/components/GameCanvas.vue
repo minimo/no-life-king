@@ -141,8 +141,8 @@ onMounted(async () => {
     source: mapTilesetTexture,
     frame: new PIXI.Rectangle(16 + i * 32, 16 + 14 * 16, 32, 32)
   }))
-  // Wood tile: 9 variations. verified at X:0..8, Y:17 (tall, starts at Y:16)
-  const woodTextures = Array.from({length: 9}, (_, i) => new PIXI.Texture({
+  // Wood tile: 11 variations. verified at X:0..10, Y:17 (tall, starts at Y:16)
+  const woodTextures = Array.from({length: 11}, (_, i) => new PIXI.Texture({
     source: mapTilesetTexture,
     frame: new PIXI.Rectangle(16 + i * 32, 16 + 16 * 16, 32, 32)
   }))
@@ -216,8 +216,8 @@ onMounted(async () => {
         const v = tileType === 2 ? 0 : Math.min(3, tileType - 21)
         tex = mountainTextures[v] ?? mountainTextures[0]!
         isTall = true
-      } else if (tileType === 3 || (tileType >= 31 && tileType <= 39)) { // Wood
-        const v = tileType === 3 ? 0 : Math.min(8, tileType - 31)
+      } else if (tileType === 3 || (tileType >= 31 && tileType <= 41)) { // Wood
+        const v = tileType === 3 ? 0 : Math.min(10, tileType - 31)
         tex = woodTextures[v] ?? woodTextures[0]!
         isTall = true
         needsGrassBase = true

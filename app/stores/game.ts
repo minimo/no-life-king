@@ -265,8 +265,39 @@ export const useGameStore = defineStore('game', {
                 for (let x = 0; x <= 50; x++) {
                     if (this.mapGrid[y] && this.mapGrid[y][x] === 1) waterCount++
                     if (this.mapGrid[y] && this.mapGrid[y][x] === 3) {
-                        // Wood 1 to 9 -> map to 31 to 39
-                        this.mapGrid[y][x] = 31 + Math.floor(Math.random() * 9)
+                        // Calculate tree density based on surrounding tiles
+                        let treeCount = 0
+                        for (let dy = -1; dy <= 1; dy++) {
+                            for (let dx = -1; dx <= 1; dx++) {
+                                if (dx === 0 && dy === 0) continue
+                                const nx = x + dx
+                                const ny = y + dy
+                                if (nx >= 0 && nx <= 50 && ny >= 0 && ny <= 50) {
+                                    const neighborId = this.mapGrid[ny]?.[nx]
+                                    // Count as a tree if it's 3, or if it's already assigned a variant 31-39
+                                    if (neighborId === 3 || (neighborId !== undefined && Math.floor(neighborId / 10) === 3)) {
+                                        treeCount++
+                                    }
+                                }
+                            }
+                        }
+
+                        // We have 5 variations (1-5, mapped to 31-35).
+                        // Tree count is max 8.
+                        // Higher index (34-35) = denser. Lower index (31-33) = sparser.
+                        let variantOffset = 0
+                        if (treeCount >= 6) {
+                            // Deep forest: highly likely to be 34-35, sometimes 33
+                            variantOffset = 2 + Math.floor(Math.random() * 3) // 2, 3, 4 (maps to 33, 34, 35)
+                        } else if (treeCount >= 3) {
+                            // Mid forest: mix of all, skewed middle
+                            variantOffset = 1 + Math.floor(Math.random() * 4) // 1, 2, 3, 4 (maps to 32, 33, 34, 35)
+                        } else {
+                            // Edge of forest: likely to be 31-32, sometimes 33
+                            variantOffset = Math.floor(Math.random() * 3) // 0, 1, 2 (maps to 31, 32, 33)
+                        }
+
+                        this.mapGrid[y][x] = 31 + variantOffset
                     } else if (this.mapGrid[y] && this.mapGrid[y][x] === 2) {
                         // Mountain
                         let isHigh = true

@@ -13,28 +13,28 @@ const handleStart = () => {
     <div class="content">
       <div class="logo-container">
         <h1 class="title">NO LIFE KING</h1>
-        <div class="subtitle">Conquer the Grid. Rule the Void.</div>
+        <div class="subtitle">Awaken the Undead. Claim the Realm.</div>
       </div>
       
       <div class="actions">
         <button class="start-btn" @click="handleStart">
-          <span class="btn-text">INITIALIZE SYSTEM</span>
+          <span class="btn-text">AWAKEN</span>
           <div class="btn-glow"></div>
         </button>
       </div>
 
       <div class="info-grid">
         <div class="info-item">
-          <div class="icon">🖱️</div>
-          <div class="text">DRAG TO DEPLOY</div>
+          <div class="icon">☠️</div>
+          <div class="text">COMMAND THE HORDE</div>
         </div>
         <div class="info-item">
-          <div class="icon">⚡</div>
-          <div class="text">CAPTURE CORES</div>
+          <div class="icon">🏰</div>
+          <div class="text">CONQUER TERRITORIES</div>
         </div>
         <div class="info-item">
-          <div class="icon">🏆</div>
-          <div class="text">DOMINATE ALL</div>
+          <div class="icon">👑</div>
+          <div class="text">RULE AS THE LICH KING</div>
         </div>
       </div>
     </div>
@@ -82,11 +82,11 @@ const handleStart = () => {
   font-weight: 900;
   margin: 0;
   letter-spacing: 0.2em;
-  background: linear-gradient(135deg, #3498db 0%, #2ecc71 100%);
+  background: linear-gradient(135deg, #a55eea 0%, #eb3b5a 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 0 20px rgba(52, 152, 219, 0.4));
+  filter: drop-shadow(0 0 20px rgba(165, 94, 234, 0.4));
   text-transform: uppercase;
 }
 
@@ -109,7 +109,7 @@ const handleStart = () => {
   font-weight: 700;
   color: white;
   background: transparent;
-  border: 1px solid rgba(52, 152, 219, 0.5);
+  border: 1px solid rgba(165, 94, 234, 0.5);
   cursor: pointer;
   overflow: hidden;
   transition: all 0.3s ease;
@@ -117,10 +117,10 @@ const handleStart = () => {
 }
 
 .start-btn:hover {
-  background: rgba(52, 152, 219, 0.1);
-  border-color: #3498db;
+  background: rgba(165, 94, 234, 0.1);
+  border-color: #a55eea;
   transform: translateY(-5px);
-  box-shadow: 0 10px 30px rgba(52, 152, 219, 0.2);
+  box-shadow: 0 10px 30px rgba(165, 94, 234, 0.2);
 }
 
 .btn-glow {
@@ -188,11 +188,11 @@ const handleStart = () => {
   top: -50%;
   left: -50%;
   background-image: 
-    linear-gradient(rgba(52, 152, 219, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(52, 152, 219, 0.05) 1px, transparent 1px);
-  background-size: 50px 50px;
-  transform: perspective(500px) rotateX(60deg);
-  animation: gridMove 20s linear infinite;
+    linear-gradient(rgba(165, 94, 234, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(165, 94, 234, 0.05) 1px, transparent 1px);
+  background-size: 80px 80px;
+  transform: perspective(800px) rotateX(60deg);
+  animation: gridMove 30s linear infinite;
 }
 
 .glow-orb {
@@ -201,18 +201,18 @@ const handleStart = () => {
   height: 400px;
   border-radius: 50%;
   filter: blur(100px);
-  opacity: 0.2;
+  opacity: 0.15;
 }
 
 .p-orb {
-  background: #3498db;
+  background: #a55eea;
   top: 10%;
   left: 10%;
   animation: float 10s ease-in-out infinite alternate;
 }
 
 .c-orb {
-  background: #e74c3c;
+  background: #eb3b5a;
   bottom: 10%;
   right: 10%;
   animation: float 12s ease-in-out infinite alternate-reverse;
