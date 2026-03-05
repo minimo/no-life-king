@@ -23,6 +23,12 @@ const OWNER_COLORS: Record<Owner, number> = {
   neutral: 0x95a5a6,
 }
 
+const DARK_OWNER_COLORS: Record<Owner, number> = {
+  player: 0x1f5a82, // Darker blue
+  cpu: 0x8a2d24,    // Darker red
+  neutral: 0x596363, // Darker gray
+}
+
 const ZONE_COLORS: Record<Owner, number> = {
   player: 0x1d272e, // Solid muted blue
   cpu: 0x2f1f1d,    // Solid muted red
@@ -546,12 +552,13 @@ onMounted(async () => {
       const selUnit = gameStore.units.find(u => u.id === selectedUnitId.value)
       if (selUnit && selUnit.path.length > 1) {
         const color = OWNER_COLORS[selUnit.owner]
+        const darkColor = DARK_OWNER_COLORS[selUnit.owner]
         const selVisuals = unitVisuals.get(selUnit.id)
 
         // 選択枠（楕円）
         if (selVisuals) {
           const uPos = toIso(selUnit.x, selUnit.y)
-          unitPathGfx.setStrokeStyle({ width: 5, color: 0x000000, alpha: 1.0 }) // 黒縁
+          unitPathGfx.setStrokeStyle({ width: 5, color: darkColor, alpha: 1.0 }) // 暗い縁
           unitPathGfx.ellipse(uPos.x, uPos.y + HIGHLIGHT_OFFSET_Y, 16, 12)
           unitPathGfx.stroke()
           
@@ -564,7 +571,7 @@ onMounted(async () => {
         const targetBase = gameStore.bases.find(b => b.id === selUnit.targetId)
         if (targetBase) {
           const tPos = toIso(targetBase.x, targetBase.y)
-          unitPathGfx.setStrokeStyle({ width: 5, color: 0x000000, alpha: 1.0 }) // 黒縁
+          unitPathGfx.setStrokeStyle({ width: 5, color: darkColor, alpha: 1.0 }) // 暗い縁
           unitPathGfx.ellipse(tPos.x, tPos.y + HIGHLIGHT_OFFSET_Y, HIGHLIGHT_HW, HIGHLIGHT_HH)
           unitPathGfx.stroke()
 
@@ -602,8 +609,8 @@ onMounted(async () => {
               ? ellipseEdge(lastPt.x, lastPt.y + HIGHLIGHT_OFFSET_Y, HIGHLIGHT_HW, HIGHLIGHT_HH, endAngle)
               : lastPt
 
-            // 線を描画（黒縁）
-            unitPathGfx.setStrokeStyle({ width: 7, color: 0x000000, alpha: 1.0 })
+            // 線を描画（暗い縁）
+            unitPathGfx.setStrokeStyle({ width: 7, color: darkColor, alpha: 1.0 })
             unitPathGfx.moveTo(startEdge.x, startEdge.y)
             for (let pi = 1; pi < isoPoints.length - 1; pi++) {
               unitPathGfx.lineTo(isoPoints[pi]!.x, isoPoints[pi]!.y)
@@ -629,13 +636,12 @@ onMounted(async () => {
             const p3x = endEdge.x - headLen * Math.cos(arrowAngle + Math.PI / 6)
             const p3y = endEdge.y - headLen * Math.sin(arrowAngle + Math.PI / 6)
 
-            // 黒縁
-            unitPathGfx.setStrokeStyle({ width: 3, color: 0x000000, alpha: 1.0, join: 'round' })
+            // 暗い縁（V字のみ描画し、後端の線は引かない）
+            unitPathGfx.setStrokeStyle({ width: 3, color: darkColor, alpha: 1.0, join: 'round' })
             unitPathGfx.beginPath()
-            unitPathGfx.moveTo(p1x, p1y)
-            unitPathGfx.lineTo(p2x, p2y)
+            unitPathGfx.moveTo(p2x, p2y)
+            unitPathGfx.lineTo(p1x, p1y)
             unitPathGfx.lineTo(p3x, p3y)
-            unitPathGfx.closePath()
             unitPathGfx.stroke()
 
             // メイン色塗りつぶし
