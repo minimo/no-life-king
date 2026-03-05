@@ -636,12 +636,22 @@ onMounted(async () => {
             const p3x = endEdge.x - headLen * Math.cos(arrowAngle + Math.PI / 6)
             const p3y = endEdge.y - headLen * Math.sin(arrowAngle + Math.PI / 6)
 
-            // 暗い縁（V字のみ描画し、後端の線は引かない）
+            // 暗い縁（後端は線分と接触する部分を開ける）
+            const baseLen = Math.hypot(p3x - p2x, p3y - p2y)
+            const gap = 6 // パスの縁取り幅(7)より少し小さめにして隙間を防ぐ
+            const ratio = Math.max(0, (baseLen - gap) / 2 / baseLen)
+            const p2_inner_x = p2x + (p3x - p2x) * ratio
+            const p2_inner_y = p2y + (p3y - p2y) * ratio
+            const p3_inner_x = p3x + (p2x - p3x) * ratio
+            const p3_inner_y = p3y + (p2y - p3y) * ratio
+
             unitPathGfx.setStrokeStyle({ width: 3, color: darkColor, alpha: 1.0, join: 'round' })
             unitPathGfx.beginPath()
-            unitPathGfx.moveTo(p2x, p2y)
+            unitPathGfx.moveTo(p2_inner_x, p2_inner_y)
+            unitPathGfx.lineTo(p2x, p2y)
             unitPathGfx.lineTo(p1x, p1y)
             unitPathGfx.lineTo(p3x, p3y)
+            unitPathGfx.lineTo(p3_inner_x, p3_inner_y)
             unitPathGfx.stroke()
 
             // メイン色塗りつぶし
