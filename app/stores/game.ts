@@ -31,8 +31,8 @@ export interface Unit {
     sourceId: string
     targetId: string
     power: number
-    progress: number // 0 to 1
-    duration: number
+    path: { x: number; y: number }[]
+    pathIndex: number
     x: number
     y: number
     elapsedTime: number
@@ -44,7 +44,7 @@ export interface Unit {
 export const RANK_CONFIG = {
     1: { cap: 100, growth: 2, upgradeCost: Infinity },
     2: { cap: 150, growth: 3, upgradeCost: 80 },
-    3: { cap: 220, growth: 4.5, upgradeCost: 120 },
+    3: { cap: 999, growth: 4.5, upgradeCost: 120 },
 }
 
 const UNIT_SPEED = 30 // px/sec
@@ -91,6 +91,164 @@ function getTerrainSpeedMultiplier(mapGrid: number[][], worldX: number, worldY: 
     }
 
     return mult
+}
+
+/** グリッドタイルの移動コストを返す（速度倍率の逆数）*/
+function getTileCost(mapGrid: number[][], gx: number, gy: number, owner: Owner): number {
+    if (gy < 0 || gy > 50 || gx < 0 || gx > 50) return 1.0
+    const tile = mapGrid[gy]?.[gx] ?? 0
+    if (tile === 1) return owner === 'cpu' ? 10.0 : 2.5 // 水
+    if (tile === 4) return 1.0 // 橋
+    if (tile === 21 || tile === 22) return 2.0 // 低山
+    if (tile === 23 || tile === 24) return 2.86 // 高山
+    if (tile >= 31 && tile <= 33) return 1.18 // 木・疎
+    if (tile === 34 || tile === 35) return 1.43 // 木・密
+    return 1.0
+}
+
+/** A*経路探索: グリッド座標で探索し、ワールド座標のウェイポイント配列を返す */
+function findPath(mapGrid: number[][], startWX: number, startWY: number, endWX: number, endWY: number, owner: Owner): { x: number; y: number }[] {
+    const sx = Math.round(startWX / 16)
+    const sy = Math.round(startWY / 16)
+    const ex = Math.round(endWX / 16)
+    const ey = Math.round(endWY / 16)
+
+    // グリッド範囲外なら直線パス
+    if (sx < 0 || sx > 50 || sy < 0 || sy > 50 || ex < 0 || ex > 50 || ey < 0 || ey > 50) {
+        return [{ x: startWX, y: startWY }, { x: endWX, y: endWY }]
+    }
+
+    // A*
+    const DIRS: [number, number, number][] = [
+        [-1, -1, 1.414], [-1, 0, 1], [-1, 1, 1.414],
+        [0, -1, 1], [0, 1, 1],
+        [1, -1, 1.414], [1, 0, 1], [1, 1, 1.414],
+    ]
+
+    const key = (x: number, y: number) => y * 51 + x
+    const gScore = new Map<number, number>()
+    const fScore = new Map<number, number>()
+    const cameFrom = new Map<number, number>()
+
+    // 簡易バイナリヒープ (open set)
+    const open: { k: number; f: number }[] = []
+    const inOpen = new Set<number>()
+    const closed = new Set<number>()
+
+    const pushOpen = (k: number, f: number) => {
+        open.push({ k, f })
+        inOpen.add(k)
+        // bubble up
+        let i = open.length - 1
+        while (i > 0) {
+            const pi = (i - 1) >> 1
+            if (open[pi]!.f <= open[i]!.f) break
+            const tmp = open[pi]!; open[pi] = open[i]!; open[i] = tmp
+            i = pi
+        }
+    }
+    const popOpen = (): { k: number; f: number } | undefined => {
+        if (open.length === 0) return undefined
+        const top = open[0]!
+        inOpen.delete(top.k)
+        const last = open.pop()!
+        if (open.length > 0) {
+            open[0] = last
+            let i = 0
+            while (true) {
+                let smallest = i
+                const l = 2 * i + 1, r = 2 * i + 2
+                if (l < open.length && open[l]!.f < open[smallest]!.f) smallest = l
+                if (r < open.length && open[r]!.f < open[smallest]!.f) smallest = r
+                if (smallest === i) break
+                const tmp = open[i]!; open[i] = open[smallest]!; open[smallest] = tmp
+                i = smallest
+            }
+        }
+        return top
+    }
+
+    const heuristic = (x: number, y: number) => {
+        const dx = Math.abs(x - ex)
+        const dy = Math.abs(y - ey)
+        return Math.max(dx, dy) + (1.414 - 1) * Math.min(dx, dy)
+    }
+
+    const sk = key(sx, sy)
+    gScore.set(sk, 0)
+    fScore.set(sk, heuristic(sx, sy))
+    pushOpen(sk, heuristic(sx, sy))
+
+    const ek = key(ex, ey)
+    let found = false
+
+    while (open.length > 0) {
+        const cur = popOpen()!
+        if (cur.k === ek) { found = true; break }
+        closed.add(cur.k)
+
+        const cx = cur.k % 51
+        const cy = (cur.k - cx) / 51
+        const curG = gScore.get(cur.k) ?? Infinity
+
+        for (const [ddx, ddy, baseDist] of DIRS) {
+            const nx = cx + ddx
+            const ny = cy + ddy
+            if (nx < 0 || nx > 50 || ny < 0 || ny > 50) continue
+            const nk = key(nx, ny)
+            if (closed.has(nk)) continue
+
+            const tileCost = getTileCost(mapGrid, nx, ny, owner)
+            const tentG = curG + baseDist * tileCost
+
+            if (tentG < (gScore.get(nk) ?? Infinity)) {
+                cameFrom.set(nk, cur.k)
+                gScore.set(nk, tentG)
+                const f = tentG + heuristic(nx, ny)
+                fScore.set(nk, f)
+                if (!inOpen.has(nk)) {
+                    pushOpen(nk, f)
+                }
+            }
+        }
+    }
+
+    if (!found) {
+        // パスが見つからない場合は直線
+        return [{ x: startWX, y: startWY }, { x: endWX, y: endWY }]
+    }
+
+    // パス復元
+    const gridPath: { x: number; y: number }[] = []
+    let ck = ek
+    while (ck !== undefined) {
+        const cx = ck % 51
+        const cy = (ck - cx) / 51
+        gridPath.unshift({ x: cx, y: cy })
+        if (ck === sk) break
+        ck = cameFrom.get(ck)!
+    }
+
+    // パスをワールド座標に変換し、直線上の中間点を除去（簡略化）
+    const worldPath: { x: number; y: number }[] = []
+    for (let i = 0; i < gridPath.length; i++) {
+        const p = gridPath[i]!
+        if (i > 0 && i < gridPath.length - 1) {
+            const prev = gridPath[i - 1]!
+            const next = gridPath[i + 1]!
+            // 方向が同じなら中間点をスキップ
+            if (p.x - prev.x === next.x - p.x && p.y - prev.y === next.y - p.y) continue
+        }
+        worldPath.push({ x: p.x * 16, y: p.y * 16 })
+    }
+
+    // 開始点と終了点をワールド座標で正確にセット
+    if (worldPath.length > 0) {
+        worldPath[0] = { x: startWX, y: startWY }
+        worldPath[worldPath.length - 1] = { x: endWX, y: endWY }
+    }
+
+    return worldPath
 }
 
 export const useGameStore = defineStore('game', {
@@ -421,10 +579,7 @@ export const useGameStore = defineStore('game', {
 
             source.production -= sendPower
 
-            const dx = target.x - source.x
-            const dy = target.y - source.y
-            const distance = Math.sqrt(dx * dx + dy * dy)
-            const duration = distance / UNIT_SPEED
+            const path = findPath(this.mapGrid, source.x, source.y, target.x, target.y, source.owner)
 
             this.units.push({
                 id: Math.random().toString(36).substr(2, 9),
@@ -432,8 +587,8 @@ export const useGameStore = defineStore('game', {
                 sourceId: source.id,
                 targetId: target.id,
                 power: sendPower,
-                progress: 0,
-                duration,
+                path,
+                pathIndex: 0,
                 x: source.x,
                 y: source.y,
                 elapsedTime: 0,
@@ -529,16 +684,24 @@ export const useGameStore = defineStore('game', {
                             unit.pursuitTargetId = null
                         }
                     } else {
-                        // Regular movement towards base
-                        const moveSpeedMult = getTerrainSpeedMultiplier(this.mapGrid, unit.x, unit.y, unit.owner, this.bases)
-                        unit.progress += (deltaSeconds * moveSpeedMult) / unit.duration
-                        const source = this.bases.find(b => b.id === unit.sourceId)
-                        const target = this.bases.find(b => b.id === unit.targetId)
-                        if (target) {
-                            const startX = source?.x ?? unit.x
-                            const startY = source?.y ?? unit.y
-                            unit.x = startX + (target.x - startX) * unit.progress
-                            unit.y = startY + (target.y - startY) * unit.progress
+                        // Regular movement: follow waypoints
+                        const nextWP = unit.path[unit.pathIndex + 1]
+                        if (nextWP) {
+                            const moveSpeedMult = getTerrainSpeedMultiplier(this.mapGrid, unit.x, unit.y, unit.owner, this.bases)
+                            const speed = UNIT_SPEED * moveSpeedMult
+                            const dx = nextWP.x - unit.x
+                            const dy = nextWP.y - unit.y
+                            const dist = Math.hypot(dx, dy)
+                            const step = speed * deltaSeconds
+                            if (dist <= step) {
+                                // ウェイポイント到達
+                                unit.x = nextWP.x
+                                unit.y = nextWP.y
+                                unit.pathIndex++
+                            } else {
+                                unit.x += (dx / dist) * step
+                                unit.y += (dy / dist) * step
+                            }
                         }
                     }
 
@@ -573,7 +736,6 @@ export const useGameStore = defineStore('game', {
                     }
                 }
 
-                const source = this.bases.find(b => b.id === unit.sourceId)
                 const target = this.bases.find(b => b.id === unit.targetId)
 
                 if (!target) {
@@ -586,7 +748,8 @@ export const useGameStore = defineStore('game', {
                     continue
                 }
 
-                if (unit.progress >= 1) {
+                // 最終ウェイポイントに到達したら到着
+                if (unit.pathIndex >= unit.path.length - 1) {
                     this.resolveCombat(unit, target)
                     this.units.splice(i, 1)
                 } else {
@@ -701,6 +864,24 @@ export const useGameStore = defineStore('game', {
             const required = target.owner !== source.owner ? target.production + 5 : 0
 
             if (available >= required && available >= 1) {
+                // A*パスから移動時間を推定し、到着時の残り体力を見積もる
+                const path = findPath(this.mapGrid, source.x, source.y, target.x, target.y, 'cpu')
+                let totalDist = 0
+                for (let i = 0; i < path.length - 1; i++) {
+                    totalDist += Math.hypot(path[i + 1]!.x - path[i]!.x, path[i + 1]!.y - path[i]!.y)
+                }
+                // 平均地形速度を考慮（パスコスト / 直線距離の比率で推定）
+                const straightDist = Math.hypot(target.x - source.x, target.y - source.y)
+                const detourRatio = straightDist > 0 ? totalDist / straightDist : 1
+                const estimatedTravelTime = totalDist / (UNIT_SPEED * (1 / Math.max(detourRatio * 0.5, 0.3)))
+                // 減衰: 1秒後から1 power/sec（中立地帯想定）
+                const decayTime = Math.max(0, estimatedTravelTime - 1.0)
+                const estimatedPowerAtArrival = available - decayTime * 1.0
+
+                // 到着時に敵拠点を制圧できるか / 友軍に到着できるかを判定
+                const minRequired = target.owner !== source.owner ? target.production * 0.5 : 1
+                if (estimatedPowerAtArrival < minRequired) return false
+
                 // Temp set ratio to 0.5 for CPU
                 const oldRatio = this.sendRatio
                 this.sendRatio = 0.5

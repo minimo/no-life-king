@@ -40,6 +40,11 @@ const ISO_CENTER_Y = 540
 const SCALE_X = 2.0 
 const SCALE_Y = 1.0
 
+// ハイライト楕円のパラメータ（スクリーン座標）
+const HIGHLIGHT_HW = 28   // 横半径
+const HIGHLIGHT_HH = 20   // 縦半径
+const HIGHLIGHT_OFFSET_Y = -8 // 楕円中心のY方向オフセット
+
 function toIso(logicalX: number, logicalY: number) {
   // Center (400, 400) at (ISO_CENTER_X, ISO_CENTER_Y)
   const rx = logicalX - LOGICAL_SIZE / 2
@@ -259,7 +264,7 @@ onMounted(async () => {
   uiLayer.addChild(dragLine)
 
   // Mapping from baseId/unitId to visuals for efficient updates
-  const baseVisuals = new Map<string, { container: PIXI.Container, zone: PIXI.Graphics }>()
+  const baseVisuals = new Map<string, { container: PIXI.Container, zone: PIXI.Graphics, highlight: PIXI.Graphics }>()
   const unitVisuals = new Map<string, { container: PIXI.Container, sprite: PIXI.AnimatedSprite, text: PIXI.Text }>()
 
   app.ticker.add((ticker) => {
@@ -321,6 +326,9 @@ onMounted(async () => {
         zone.y = pos.y
         zoneLayer.addChild(zone)
 
+        const highlight = new PIXI.Graphics()
+        container.addChild(highlight)
+
         // Base Sprite from Tileset
         let texture = neutralBaseTexture
         if (base.isCore) {
@@ -362,11 +370,11 @@ onMounted(async () => {
         container.addChild(rankText)
 
         baseLayer.addChild(container)
-        visuals = { container, zone }
+        visuals = { container, zone, highlight }
         baseVisuals.set(base.id, visuals)
       }
 
-      const { container, zone } = visuals
+      const { container, zone, highlight } = visuals
       const sprite = container.getChildByName('sprite') as PIXI.Sprite
       const text = container.getChildByName('text') as PIXI.Text
       const rankText = container.getChildByName('rank') as PIXI.Text
@@ -395,10 +403,14 @@ onMounted(async () => {
       // Target & Source Highlights
       const isTarget = base.id === targetedBaseId.value || base.id === multiSendTargetId.value
       const isSource = base.id === draggingFromBaseId.value
+        || (multiSendTargetId.value !== null && base.owner === 'player' && base.id !== multiSendTargetId.value)
       
+      highlight.clear()
       if (isTarget || isSource) {
-        // Simple highlight circle/ellipse below building
-        // Or we could add a stroke to the building sprite but that's messy with tints
+        // 砦の周囲に緑色の楕円枠を描画
+        highlight.setStrokeStyle({ width: 3, color: 0x2ecc71, alpha: 0.9 })
+        highlight.ellipse(0, HIGHLIGHT_OFFSET_Y, HIGHLIGHT_HW, HIGHLIGHT_HH)
+        highlight.stroke()
       }
 
       text.text = Math.floor(base.production).toString()
@@ -515,35 +527,55 @@ onMounted(async () => {
     }
   })
 
+  /** 楕円外周上の点を求める: 楕円中心から角度 angle 方向の外周座標を返す */
+  function ellipseEdge(cx: number, cy: number, a: number, b: number, angle: number) {
+    const cosA = Math.cos(angle)
+    const sinA = Math.sin(angle)
+    // 楕円 x²/a² + y²/b² = 1 と原点からの直線の交点距離
+    const r = 1 / Math.sqrt((cosA * cosA) / (a * a) + (sinA * sinA) / (b * b))
+    return { x: cx + r * cosA, y: cy + r * sinA }
+  }
+
   function renderArrow(g: PIXI.Graphics, source: {x: number, y: number}, target: {x: number, y: number}, sourceIsBase = false, targetIsBase = false) {
     const sPos = toIso(source.x, source.y)
     const tPos = toIso(target.x, target.y)
 
-    if (sPos.x === tPos.x && sPos.y === tPos.y) return
+    // 楕円中心（Y方向にオフセット）
+    const sCx = sPos.x, sCy = sPos.y + HIGHLIGHT_OFFSET_Y
+    const tCx = tPos.x, tCy = tPos.y + HIGHLIGHT_OFFSET_Y
 
-    const totalAngle = Math.atan2(tPos.y - sPos.y, tPos.x - sPos.x)
-    const cos = Math.cos(totalAngle)
-    const sin = Math.sin(totalAngle)
+    if (sCx === tCx && sCy === tCy) return
 
-    let fromX = sPos.x
-    let fromY = sPos.y
+    // 楕円中心同士を結ぶ角度
+    const centerAngle = Math.atan2(tCy - sCy, tCx - sCx)
+
+    // 始点: ソース楕円の外周から
+    let fromX: number, fromY: number
     if (sourceIsBase) {
-      const t = 20 / Math.max(Math.abs(cos), Math.abs(sin))
-      fromX = sPos.x + cos * t
-      fromY = sPos.y + sin * t
+      const edge = ellipseEdge(sCx, sCy, HIGHLIGHT_HW, HIGHLIGHT_HH, centerAngle)
+      fromX = edge.x
+      fromY = edge.y
+    } else {
+      fromX = sPos.x
+      fromY = sPos.y
     }
 
-    let toX = tPos.x
-    let toY = tPos.y
+    // 終点: ターゲット楕円の外周（逆方向）
+    let toX: number, toY: number
     if (targetIsBase) {
-      const t = 20 / Math.max(Math.abs(cos), Math.abs(sin))
-      toX = tPos.x - cos * t
-      toY = tPos.y - sin * t
+      const edge = ellipseEdge(tCx, tCy, HIGHLIGHT_HW, HIGHLIGHT_HH, centerAngle + Math.PI)
+      toX = edge.x
+      toY = edge.y
+    } else {
+      toX = tPos.x
+      toY = tPos.y
     }
 
     const dist = Math.hypot(toX - fromX, toY - fromY)
     if (dist <= 0) return
 
+    // 矢印の角度は実際の始点→終点ベクトルで計算
+    const arrowAngle = Math.atan2(toY - fromY, toX - fromX)
     const headLength = 20
     
     g.setStrokeStyle({ width: 5, color: 0x2ecc71, alpha: 0.8 })
@@ -555,8 +587,8 @@ onMounted(async () => {
     g.beginPath()
     g.fillStyle = 0x2ecc71
     g.moveTo(toX, toY)
-    g.lineTo(toX - headLength * Math.cos(totalAngle - Math.PI / 6), toY - headLength * Math.sin(totalAngle - Math.PI / 6))
-    g.lineTo(toX - headLength * Math.cos(totalAngle + Math.PI / 6), toY - headLength * Math.sin(totalAngle + Math.PI / 6))
+    g.lineTo(toX - headLength * Math.cos(arrowAngle - Math.PI / 6), toY - headLength * Math.sin(arrowAngle - Math.PI / 6))
+    g.lineTo(toX - headLength * Math.cos(arrowAngle + Math.PI / 6), toY - headLength * Math.sin(arrowAngle + Math.PI / 6))
     g.closePath()
     g.fill()
   }
