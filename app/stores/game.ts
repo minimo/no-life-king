@@ -74,17 +74,17 @@ export const useGameStore = defineStore('game', {
             // Logical coordinate system: 0 to 800
             const size = 800
             const margin = 100
-            const minDistance = 150
+            const minDistance = 100
 
             // 1. Create Core Bases
-            // Player Core (Left area of the diamond)
-            const pCoreX = margin + Math.random() * 100
-            const pCoreY = size / 2 + (Math.random() - 0.5) * 200
+            // Player Core (Bottom-Left map corner -> Screen Left)
+            const pCoreX = margin
+            const pCoreY = size - margin
             this.bases.push(this.createBase('p-core', 'player', 1, true, pCoreX, pCoreY))
 
-            // CPU Core (Right area of the diamond)
-            const cCoreX = size - margin - Math.random() * 100
-            const cCoreY = size / 2 + (Math.random() - 0.5) * 200
+            // CPU Core (Top-Right map corner -> Screen Right)
+            const cCoreX = size - margin
+            const cCoreY = margin
             this.bases.push(this.createBase('c-core', 'cpu', 1, true, cCoreX, cCoreY))
 
             // 2. Create Neutral Bases
@@ -92,8 +92,10 @@ export const useGameStore = defineStore('game', {
             let attempts = 0
             while (this.bases.length < baseCount && attempts < 200) {
                 attempts++
-                const x = margin + Math.random() * (size - margin * 2)
-                const y = margin + Math.random() * (size - margin * 2)
+                // Place bases at the player side (left) or cpu side (right) map quadrants
+                const isLeftEdge = Math.random() < 0.5
+                const x = isLeftEdge ? margin + Math.random() * 300 : size - margin - Math.random() * 300
+                const y = isLeftEdge ? size - margin - Math.random() * 300 : margin + Math.random() * 300
 
                 // Check distance from existing bases
                 const tooClose = this.bases.some(b => Math.hypot(b.x - x, b.y - y) < minDistance)
