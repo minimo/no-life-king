@@ -158,10 +158,16 @@ onMounted(async () => {
     source: mapTilesetTexture,
     frame: new PIXI.Rectangle(16 + i * 32, 16 + 16 * 16, 32, 32)
   }))
-  // Bridge tile: verified at X:3, Y:20
-  const bridgeTexture = new PIXI.Texture({
+  // Bridge textures (32x32 at y=320 row, 4th and 5th slots)
+  // Bridge Y (Slot 4, x=112): Bottom-Left to Top-Right
+  const bridgeYTexture = new PIXI.Texture({
     source: mapTilesetTexture,
-    frame: new PIXI.Rectangle(16 + 3 * 32, 16 + 20 * 16, 32, 16)
+    frame: new PIXI.Rectangle(112, 320, 32, 32)
+  })
+  // Bridge X (Slot 5, x=144): Top-Left to Bottom-Right
+  const bridgeXTexture = new PIXI.Texture({
+    source: mapTilesetTexture,
+    frame: new PIXI.Rectangle(144, 320, 32, 32)
   })
 
   // Buildings: 32x32 sprites at y=320 row (grid row 19-20)
@@ -221,6 +227,7 @@ onMounted(async () => {
       let tex = grassTexture
       let isTall = false
       let needsGrassBase = false
+      let needsWaterBase = false
 
       if (tileType === 1) { // Water
         tex = waterTexture
@@ -234,10 +241,23 @@ onMounted(async () => {
         isTall = true
         needsGrassBase = true
       } else if (tileType === 4) { // Bridge
-        tex = bridgeTexture
+        // Determine direction by checking adjacent water on X axis
+        const isRiverX = gameStore.mapGrid[gridY]?.[gridX - 1] === 1 || gameStore.mapGrid[gridY]?.[gridX + 1] === 1
+        // If river is X axis, it flows Top-Left to Bottom-Right. Bridge crosses over it (Bottom-Left to Top-Right -> Bridge Y)
+        tex = isRiverX ? bridgeYTexture : bridgeXTexture
+        needsWaterBase = true
       }
 
       const pos = toIso(lx, ly)
+
+      if (needsWaterBase) {
+        const baseTile = new PIXI.Sprite(waterTexture)
+        baseTile.anchor.set(0.5, 0.5)
+        baseTile.scale.set(1.08)
+        baseTile.x = pos.x
+        baseTile.y = pos.y
+        mapLayer.addChild(baseTile)
+      }
 
       if (needsGrassBase) {
         const baseTile = new PIXI.Sprite(grassTexture)

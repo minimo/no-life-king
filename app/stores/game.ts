@@ -335,6 +335,7 @@ export const useGameStore = defineStore('game', {
 
             // 4. Carve Rivers
             const numRivers = 1 + Math.floor(Math.random() * 2) // 1 to 2
+            const riverPoints: { x: number, y: number }[] = []
 
             for (let r = 0; r < numRivers; r++) {
                 const isHorizontal = Math.random() < 0.5
@@ -353,7 +354,6 @@ export const useGameStore = defineStore('game', {
                 }
 
                 const riverNoise = createNoise2D()
-                const riverPoints: { x: number, y: number }[] = []
 
                 let lastNx = -1
                 let lastNy = -1
@@ -416,50 +416,59 @@ export const useGameStore = defineStore('game', {
                     }
                     carveRiverPath(branchStartX, branchStartY, branchEndX, branchEndY)
                 }
+            }
 
-                // Add up to 3 bridges for this river system
-                const maxBridges = Math.floor(Math.random() * 4) // 0 to 3
-                for (let b = 0; b < maxBridges; b++) {
-                    if (riverPoints.length === 0) break
+            // 川が全て生成された後に橋をかける
+            // Add 2 to 4 bridges per river system
+            const maxBridges = numRivers * (2 + Math.floor(Math.random() * 3)) // numRivers * (2 to 4)
+            for (let b = 0; b < maxBridges; b++) {
+                if (riverPoints.length === 0) break
 
-                    // Find a valid straight point
-                    let validIdx = -1
-                    let attempt = 0
-                    while (attempt < 10) {
-                        const idx = Math.floor(Math.random() * riverPoints.length)
-                        const point = riverPoints[idx]
-                        if (!point) {
-                            attempt++
-                            continue
-                        }
-                        const x = point.x
-                        const y = point.y
-                        if (this.mapGrid[y] && this.mapGrid[y][x] === 1) {
-                            // Check straightness: Horizontal or Vertical water blocks
-                            const isHoriz = (this.mapGrid[y]?.[x - 1] === 1 && this.mapGrid[y]?.[x + 1] === 1 && this.mapGrid[y - 1]?.[x] !== 1 && this.mapGrid[y + 1]?.[x] !== 1)
-                            const isVert = (this.mapGrid[y - 1]?.[x] === 1 && this.mapGrid[y + 1]?.[x] === 1 && this.mapGrid[y]?.[x - 1] !== 1 && this.mapGrid[y]?.[x + 1] !== 1)
-                            if (isHoriz || isVert) {
-                                validIdx = idx
-                                break
-                            }
-                        }
+                // Find a valid straight point
+                let validIdx = -1
+                let attempt = 0
+                while (attempt < 20) {
+                    const idx = Math.floor(Math.random() * riverPoints.length)
+                    const point = riverPoints[idx]
+                    if (!point) {
                         attempt++
+                        continue
                     }
+                    const x = point.x
+                    const y = point.y
+                    if (this.mapGrid[y] && this.mapGrid[y][x] === 1) {
+                        // Check straightness & ensure bridge ends are valid land
+                        const top = this.mapGrid[y - 1]?.[x]
+                        const bottom = this.mapGrid[y + 1]?.[x]
+                        const left = this.mapGrid[y]?.[x - 1]
+                        const right = this.mapGrid[y]?.[x + 1]
 
-                    if (validIdx !== -1) {
-                        const point = riverPoints[validIdx]
-                        if (point) {
-                            this.mapGrid[point.y][point.x] = 4 // Set to bridge
-                            // Remove surrounding points to avoid clustered bridges
-                            riverPoints.splice(Math.max(0, validIdx - 8), 16)
-                            continue
+                        const isValidLand = (tile: number | undefined) => tile !== undefined && tile !== 1 && tile !== 4
+
+                        const isRiverHoriz = (left === 1 && right === 1 && isValidLand(top) && isValidLand(bottom))
+                        const isRiverVert = (top === 1 && bottom === 1 && isValidLand(left) && isValidLand(right))
+
+                        if (isRiverHoriz || isRiverVert) {
+                            validIdx = idx
+                            break
                         }
                     }
-
-                    // If no valid straight point found after attempts, just remove a random one to prevent infinite loops on tiny rivers
-                    const failIdx = Math.floor(Math.random() * riverPoints.length)
-                    riverPoints.splice(Math.max(0, failIdx - 8), 16)
+                    attempt++
                 }
+
+                if (validIdx !== -1) {
+                    const point = riverPoints[validIdx]
+                    if (point) {
+                        this.mapGrid[point.y][point.x] = 4 // Set to bridge
+                        // Remove surrounding points to avoid clustered bridges
+                        riverPoints.splice(Math.max(0, validIdx - 8), 16)
+                        continue
+                    }
+                }
+
+                // If no valid straight point found after attempts, just remove a random one to prevent infinite loops on tiny rivers
+                const failIdx = Math.floor(Math.random() * riverPoints.length)
+                riverPoints.splice(Math.max(0, failIdx - 8), 16)
             }
             // Assign variations for Mountains and Woods
             let waterCount = 0
