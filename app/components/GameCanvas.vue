@@ -157,21 +157,21 @@ onMounted(async () => {
     frame: new PIXI.Rectangle(16 + 3 * 32, 16 + 20 * 16, 32, 16)
   })
 
-  // Buildings (at the bottom, safe area between the grid lines)
-  // Building A (House): Block 0 (x=0). Center crop: x=8, y=312.
+  // Buildings: 32x32 sprites at y=320 row (grid row 19-20)
+  // Building A (城): col 0 → (16, 320)
   const playerCoreTexture = new PIXI.Texture({
     source: mapTilesetTexture,
-    frame: new PIXI.Rectangle(8, 312, 48, 48)
+    frame: new PIXI.Rectangle(16, 320, 32, 32)
   })
-  // CPU uses same house per user choice.
+  // Building B (砦): col 1 → (48, 320) ※主要拠点は城を使用
   const cpuCoreTexture = new PIXI.Texture({
     source: mapTilesetTexture,
-    frame: new PIXI.Rectangle(8, 312, 48, 48)
+    frame: new PIXI.Rectangle(16, 320, 32, 32)
   })
-  // Building C (Church): Block 2 (x=128). Center crop: x=136, y=312.
+  // Building C (集落): col 2 → (80, 320)
   const neutralBaseTexture = new PIXI.Texture({
     source: mapTilesetTexture,
-    frame: new PIXI.Rectangle(136, 312, 48, 48)
+    frame: new PIXI.Rectangle(80, 320, 32, 32)
   })
 
   const playerAnimations = {
