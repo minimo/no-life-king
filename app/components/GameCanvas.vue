@@ -360,7 +360,6 @@ onMounted(async () => {
           }
           
           pointerDownPos.value = { x: e.clientX, y: e.clientY }
-          pointerDownEntityId.value = base.id
           
           const now = Date.now()
           const isDoubleClick = (now - lastClickTime < DOUBLE_CLICK_THRESHOLD) && (lastClickedBaseId === base.id)
@@ -370,8 +369,11 @@ onMounted(async () => {
             draggingFromBaseId.value = null
             pointerDownEntityId.value = null // Cancel context menu for this double click
           } else if (base.owner === 'player') {
+            pointerDownEntityId.value = base.id // ALLOW MENU ONLY FOR PLAYER BASES
             draggingFromBaseId.value = base.id
             multiSendTargetId.value = null
+          } else {
+            pointerDownEntityId.value = null
           }
           selectedUnitId.value = null
           
