@@ -49,6 +49,29 @@ export const RANK_CONFIG = {
 
 const UNIT_SPEED = 30 // px/sec
 
+/** ユニット現在位置の地形タイルから速度倍率を返す */
+function getTerrainSpeedMultiplier(mapGrid: number[][], worldX: number, worldY: number, owner: Owner): number {
+    const gx = Math.round(worldX / 16)
+    const gy = Math.round(worldY / 16)
+    if (gy < 0 || gy > 50 || gx < 0 || gx > 50) return 1.0
+    const tile = mapGrid[gy]?.[gx] ?? 0
+
+    // 水
+    if (tile === 1) return owner === 'cpu' ? 0.1 : 0.4
+    // 橋
+    if (tile === 4) return 1.0
+    // 低山 (21-22)
+    if (tile === 21 || tile === 22) return 0.5
+    // 高山 (23-24)
+    if (tile === 23 || tile === 24) return 0.35
+    // 木・疎 (31-33)
+    if (tile >= 31 && tile <= 33) return 0.85
+    // 木・密 (34-35)
+    if (tile === 34 || tile === 35) return 0.7
+    // 草地 or その他
+    return 1.0
+}
+
 export const useGameStore = defineStore('game', {
     state: () => ({
         mapGrid: [] as number[][], // 51x51 grid (0: Grass, 1: Water, 2: Mountain, 3: Wood, 4: Bridge)
@@ -477,15 +500,17 @@ export const useGameStore = defineStore('game', {
                             const dy = targetUnit.y - unit.y
                             const dist = Math.hypot(dx, dy)
                             if (dist > 2) {
-                                unit.x += (dx / dist) * UNIT_SPEED * deltaSeconds
-                                unit.y += (dy / dist) * UNIT_SPEED * deltaSeconds
+                                const pursuitSpeedMult = getTerrainSpeedMultiplier(this.mapGrid, unit.x, unit.y, unit.owner)
+                                unit.x += (dx / dist) * UNIT_SPEED * pursuitSpeedMult * deltaSeconds
+                                unit.y += (dy / dist) * UNIT_SPEED * pursuitSpeedMult * deltaSeconds
                             }
                         } else {
                             unit.pursuitTargetId = null
                         }
                     } else {
                         // Regular movement towards base
-                        unit.progress += deltaSeconds / unit.duration
+                        const moveSpeedMult = getTerrainSpeedMultiplier(this.mapGrid, unit.x, unit.y, unit.owner)
+                        unit.progress += (deltaSeconds * moveSpeedMult) / unit.duration
                         const source = this.bases.find(b => b.id === unit.sourceId)
                         const target = this.bases.find(b => b.id === unit.targetId)
                         if (target) {
