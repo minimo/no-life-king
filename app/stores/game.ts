@@ -251,21 +251,33 @@ function findPath(mapGrid: number[][], startWX: number, startWY: number, endWX: 
     return worldPath
 }
 
+export interface GameState {
+    mapGrid: number[][]
+    bases: Base[]
+    units: Unit[]
+    sendRatio: number
+    isGameOver: boolean
+    winner: Owner | null
+    targetSelectThreshold: number
+    cpuThinkingTimer: number
+    status: 'title' | 'playing' | 'gameover'
+}
+
 export const useGameStore = defineStore('game', {
-    state: () => ({
-        mapGrid: [] as number[][], // 51x51 grid (0: Grass, 1: Water, 2: Mountain, 3: Wood, 4: Bridge)
-        bases: [] as Base[],
-        units: [] as Unit[],
+    state: (): GameState => ({
+        mapGrid: [], // 51x51 grid (0: Grass, 1: Water, 2: Mountain, 3: Wood, 4: Bridge)
+        bases: [],
+        units: [],
         sendRatio: 0.5,
         isGameOver: false,
-        winner: null as Owner | null,
+        winner: null,
         targetSelectThreshold: 40,
         cpuThinkingTimer: 0,
-        status: 'title' as 'title' | 'playing' | 'gameover',
+        status: 'title',
     }),
 
     actions: {
-        initGame() {
+        initGame(): void {
             this.bases = []
             this.units = []
             this.isGameOver = false
@@ -324,11 +336,11 @@ export const useGameStore = defineStore('game', {
                     m = m / 1.5 // normalize
 
                     if (e > 0.45) {
-                        this.mapGrid[y][x] = 2 // Mountain
+                        this.mapGrid[y]![x] = 2 // Mountain
                     } else if (m > 0.3) {
-                        this.mapGrid[y][x] = 3 // Wood
+                        this.mapGrid[y]![x] = 3 // Wood
                     } else {
-                        this.mapGrid[y][x] = 0 // Grass
+                        this.mapGrid[y]![x] = 0 // Grass
                     }
                 }
             }
@@ -359,8 +371,8 @@ export const useGameStore = defineStore('game', {
                 let lastNy = -1
 
                 const recordPoint = (nx: number, ny: number) => {
-                    if (this.mapGrid[ny] && this.mapGrid[ny][nx] !== undefined) {
-                        this.mapGrid[ny][nx] = 1 // Water
+                    if (this.mapGrid[ny] && this.mapGrid[ny]![nx] !== undefined) {
+                        this.mapGrid[ny]![nx] = 1 // Water
                         if (nx >= 2 && nx <= 48 && ny >= 2 && ny <= 48) {
                             if (!riverPoints.find(p => p.x === nx && p.y === ny)) {
                                 riverPoints.push({ x: nx, y: ny })
@@ -436,7 +448,7 @@ export const useGameStore = defineStore('game', {
                     }
                     const x = point.x
                     const y = point.y
-                    if (this.mapGrid[y] && this.mapGrid[y][x] === 1) {
+                    if (this.mapGrid[y] && this.mapGrid[y]![x] === 1) {
                         // Check straightness & ensure bridge ends are valid land
                         const top = this.mapGrid[y - 1]?.[x]
                         const bottom = this.mapGrid[y + 1]?.[x]
@@ -459,7 +471,7 @@ export const useGameStore = defineStore('game', {
                 if (validIdx !== -1) {
                     const point = riverPoints[validIdx]
                     if (point) {
-                        this.mapGrid[point.y][point.x] = 4 // Set to bridge
+                        this.mapGrid[point.y]![point.x] = 4 // Set to bridge
                         // Remove surrounding points to avoid clustered bridges
                         riverPoints.splice(Math.max(0, validIdx - 8), 16)
                         continue
@@ -474,8 +486,8 @@ export const useGameStore = defineStore('game', {
             let waterCount = 0
             for (let y = 0; y <= 50; y++) {
                 for (let x = 0; x <= 50; x++) {
-                    if (this.mapGrid[y] && this.mapGrid[y][x] === 1) waterCount++
-                    if (this.mapGrid[y] && this.mapGrid[y][x] === 3) {
+                    if (this.mapGrid[y] && this.mapGrid[y]![x] === 1) waterCount++
+                    if (this.mapGrid[y] && this.mapGrid[y]![x] === 3) {
                         // Calculate tree density based on surrounding tiles
                         let treeCount = 0
                         for (let dy = -1; dy <= 1; dy++) {
@@ -508,8 +520,8 @@ export const useGameStore = defineStore('game', {
                             variantOffset = Math.floor(Math.random() * 3) // 0, 1, 2 (maps to 31, 32, 33)
                         }
 
-                        this.mapGrid[y][x] = 31 + variantOffset
-                    } else if (this.mapGrid[y] && this.mapGrid[y][x] === 2) {
+                        this.mapGrid[y]![x] = 31 + variantOffset
+                    } else if (this.mapGrid[y] && this.mapGrid[y]![x] === 2) {
                         // Mountain
                         let isHigh = true
                         const dirs: [number, number][] = [[0, -1], [0, 1], [-1, 0], [1, 0]]
@@ -529,9 +541,9 @@ export const useGameStore = defineStore('game', {
                             }
                         }
                         if (isHigh) {
-                            this.mapGrid[y][x] = 23 + Math.floor(Math.random() * 2) // 23, 24
+                            this.mapGrid[y]![x] = 23 + Math.floor(Math.random() * 2) // 23, 24
                         } else {
-                            this.mapGrid[y][x] = 21 + Math.floor(Math.random() * 2) // 21, 22
+                            this.mapGrid[y]![x] = 21 + Math.floor(Math.random() * 2) // 21, 22
                         }
 
                     }
@@ -547,8 +559,8 @@ export const useGameStore = defineStore('game', {
                         const ny = gridY + dy
                         const nx = gridX + dx
                         if (ny >= 0 && ny <= 50 && nx >= 0 && nx <= 50) {
-                            if (this.mapGrid[ny][nx] !== 1) { // Do not erase rivers
-                                this.mapGrid[ny][nx] = 0 // Grass
+                            if (this.mapGrid[ny]![nx] !== 1) { // Do not erase rivers
+                                this.mapGrid[ny]![nx] = 0 // Grass
                             }
                         }
                     }
@@ -576,7 +588,7 @@ export const useGameStore = defineStore('game', {
             }
         },
 
-        sendUnits(sourceId: string, targetId: string) {
+        sendUnits(sourceId: string, targetId: string): void {
             if (this.isGameOver) return
 
             const source = this.bases.find((b: Base) => b.id === sourceId)
@@ -604,7 +616,7 @@ export const useGameStore = defineStore('game', {
             })
         },
 
-        update(deltaSeconds: number) {
+        update(deltaSeconds: number): void {
             if (this.isGameOver) return
 
             // 1. Production & Easing
@@ -773,7 +785,7 @@ export const useGameStore = defineStore('game', {
             this.checkGameOver()
         },
 
-        resolveCombat(unit: Unit, target: Base) {
+        resolveCombat(unit: Unit, target: Base): void {
             if (unit.owner === target.owner) {
                 target.production += unit.power
                 if (target.production > target.productionCap) {
@@ -793,7 +805,7 @@ export const useGameStore = defineStore('game', {
             }
         },
 
-        upgradeBase(baseId: string) {
+        upgradeBase(baseId: string): void {
             const base = this.bases.find(b => b.id === baseId)
             if (!base || base.rank >= 3) return
 
@@ -809,7 +821,7 @@ export const useGameStore = defineStore('game', {
             }
         },
 
-        updateCPU(delta: number) {
+        updateCPU(delta: number): void {
             this.cpuThinkingTimer -= delta
             if (this.cpuThinkingTimer <= 0) {
                 this.cpuThinkingTimer = Math.random() * 1.0 + 0.5
@@ -817,7 +829,7 @@ export const useGameStore = defineStore('game', {
             }
         },
 
-        executeCPUAction() {
+        executeCPUAction(): void {
             const cpuBases = this.bases.filter(b => b.owner === 'cpu')
             if (cpuBases.length === 0) return
 
@@ -867,7 +879,7 @@ export const useGameStore = defineStore('game', {
             }
         },
 
-        tryCPUSend(source: Base, target: Base) {
+        tryCPUSend(source: Base, target: Base): boolean {
             if (!source || !target) return false
             const available = Math.floor(source.production * 0.5)
             const required = target.owner !== source.owner ? target.production + 5 : 0
@@ -901,7 +913,7 @@ export const useGameStore = defineStore('game', {
             return false
         },
 
-        checkGameOver() {
+        checkGameOver(): void {
             const playerCore = this.bases.find(b => b.isCore && b.owner === 'player')
             const cpuCore = this.bases.find(b => b.isCore && b.owner === 'cpu')
 
@@ -918,12 +930,12 @@ export const useGameStore = defineStore('game', {
             }
         },
 
-        startGame() {
+        startGame(): void {
             this.status = 'playing'
             this.initGame()
         },
 
-        backToTitle() {
+        backToTitle(): void {
             this.status = 'title'
         }
     }
