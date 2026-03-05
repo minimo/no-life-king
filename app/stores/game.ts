@@ -20,9 +20,9 @@ export interface Base {
 
 export function calculateTargetZoneRadius(base: Base): number {
     if (base.owner === 'neutral') return 0
-    // Radius: 150 to 300, proportional to production (cap is max)
+    // Radius: 75 to 150, proportional to production (cap is max)
     const ratio = Math.min(1, base.production / base.productionCap)
-    return 150 + (300 - 150) * ratio
+    return 75 + (150 - 75) * ratio
 }
 
 export interface Unit {
@@ -132,7 +132,7 @@ export const useGameStore = defineStore('game', {
             }
 
             // 4. Carve Rivers
-            const numRivers = Math.floor(Math.random() * 3) // 0 to 2
+            const numRivers = 1 + Math.floor(Math.random() * 2) // 1 to 2
 
             for (let r = 0; r < numRivers; r++) {
                 const isHorizontal = Math.random() < 0.5
@@ -361,7 +361,7 @@ export const useGameStore = defineStore('game', {
                 x,
                 y,
                 radius: 16, // Visual half of 32x32
-                currentZoneRadius: owner === 'neutral' ? 0 : 150,
+                currentZoneRadius: owner === 'neutral' ? 0 : 75,
             }
         },
 
