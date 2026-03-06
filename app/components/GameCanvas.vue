@@ -556,7 +556,7 @@ onMounted(async () => {
           text: '',
           style: {
             fontFamily: 'monospace',
-            fontSize: 10,
+            fontSize: 14, // 13から14に拡大
             fill: 0xffffff,
             stroke: { color: 0x000000, width: 2 },
             fontWeight: 'bold'
@@ -604,6 +604,16 @@ onMounted(async () => {
       // 城（Rank 3）と砦（Rank 2）が占領されている場合、および本拠地の場合は旗を表示
       const shouldShowFlag = (base.isCore || base.rank >= 2) && base.owner !== 'neutral'
       
+      // 所有者のチームカラーに基づいて色（塗り）と縁取りを更新
+      // 数値自体の色は白、縁取りをチームカラーにする（旗の有無に関わらず適用）
+      if (base.owner !== 'neutral') {
+        text.style.fill = 0xffffff
+        text.style.stroke = { color: OWNER_COLORS[base.owner], width: 2 }
+      } else {
+        text.style.fill = 0xffffff
+        text.style.stroke = { color: 0x000000, width: 2 }
+      }
+
       if (shouldShowFlag) {
         flagSprite.visible = true
         flagSprite.texture = base.owner === 'player' ? flagPlayerTexture : flagCpuTexture
@@ -616,11 +626,11 @@ onMounted(async () => {
         
         flagSprite.y = flagBaseY
         
-        // テキストを旗のさらに上に配置
-        text.y = flagSprite.y - 19
+        // テキストを旗のさらに上に配置（さらに微調整: -23 -> -24）
+        text.y = flagSprite.y - 24
       } else {
         flagSprite.visible = false
-        // 旗がない場合の通常位置
+        // 旗がない場合の通常位置（村など）
         text.y = -22
       }
 
@@ -706,12 +716,19 @@ onMounted(async () => {
           }
         })
 
+        const strokeColor = unit.owner === 'player' ? OWNER_COLORS.player : OWNER_COLORS.cpu
         const text = new PIXI.Text({
           text: Math.ceil(unit.power).toString(),
-          style: { fontSize: 10, fill: 0xffffff, stroke: { color: 0x000000, width: 2 } }
+          style: { 
+            fontSize: 14, 
+            fill: 0xffffff, // 白塗り
+            stroke: { color: strokeColor, width: 2 }, // チームカラー縁取り
+            fontFamily: 'monospace',
+            fontWeight: 'bold'
+          }
         })
         text.anchor.set(0.5)
-        text.y = -35
+        text.y = -38 // フォント拡大に合わせて位置を調整 (-35 -> -38)
         container.addChild(text)
         
         unitLayer.addChild(container)
@@ -725,6 +742,12 @@ onMounted(async () => {
       container.y = pos.y
       container.zIndex = pos.y // Simple Y-sorting
       text.text = Math.ceil(unit.power).toString()
+      
+      // 所有者のチームカラーに基づいて縁取りを更新
+      const strokeColor = unit.owner === 'player' ? OWNER_COLORS.player : OWNER_COLORS.cpu
+      text.style.fill = 0xffffff
+      text.style.stroke = { color: strokeColor, width: 2 }
+      text.style.fontSize = 14
 
       if (sprite instanceof PIXI.AnimatedSprite) {
         // Determine Animation & Direction
