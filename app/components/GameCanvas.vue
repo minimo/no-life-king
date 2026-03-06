@@ -70,8 +70,8 @@ const DARK_OWNER_COLORS: Record<Owner, number> = {
   neutral: 0x596363, // Darker gray
 }
 
-// Village roof coloring: We'll generate separate textures at runtime
-// to avoid shader/filter issues that were causing rendering glitches.
+// 村の屋根の色彩変更：描画の不具合（シェーダー/フィルタの干渉）を避けるため、
+// 実行時に個別のテクスチャを事前生成する方式を採用しています。
 
 const ZONE_COLORS: Record<Owner, number> = {
   player: 0x3498db, // Bright blue
@@ -265,15 +265,15 @@ onMounted(async () => {
     return baseRank1Texture
   }
 
-  // Function to create a color-replaced texture for village roofs
+  // 村の屋根の色を置換したテクスチャを作成する関数
   function createVillageTexture(sourceTexture: PIXI.Texture, targetRGB: [number, number, number]) {
-    // Extract pixel data using a temporary canvas
+    // 一時的なCanvasを使用してピクセルデータを抽出
     const canvas = document.createElement('canvas');
     canvas.width = 32;
     canvas.height = 32;
     const ctx = canvas.getContext('2d')!;
     
-    // Draw the original texture to canvas
+    // 元のテクスチャをCanvasに描画
     const baseSource = sourceTexture.source.resource as HTMLImageElement;
     const frame = sourceTexture.frame;
     ctx.drawImage(baseSource, frame.x, frame.y, frame.width, frame.height, 0, 0, 32, 32);
@@ -286,7 +286,7 @@ onMounted(async () => {
       const g = data[i+1] / 255;
       const b = data[i+2] / 255;
       
-      // Detailed red detection for the roof
+      // 屋根の赤色部分を詳細に判定
       if (r > g * 1.4 && r > b * 1.4 && r > 0.3) {
         data[i] = targetRGB[0] * r * 255;
         data[i+1] = targetRGB[1] * r * 255;
@@ -297,10 +297,10 @@ onMounted(async () => {
     return PIXI.Texture.from(canvas);
   }
 
-  // Pre-generate village textures for each owner
-  const villageNeutralTexture = createVillageTexture(baseRank1Texture, [0.7, 0.7, 0.7]); // Gray
-  const villagePlayerTexture = createVillageTexture(baseRank1Texture, [0.2, 0.6, 1.0]);  // Blue
-  const villageCpuTexture = baseRank1Texture; // Default Red
+  // 各所有者ごとの村テクスチャを事前生成
+  const villageNeutralTexture = createVillageTexture(baseRank1Texture, [0.7, 0.7, 0.7]); // 灰色
+  const villagePlayerTexture = createVillageTexture(baseRank1Texture, [0.2, 0.6, 1.0]);  // 青色
+  const villageCpuTexture = baseRank1Texture; // デフォルト（赤色）
 
   const playerAnimations = {
     idle: createFrames(playerBaseTexture, 80),
@@ -531,13 +531,13 @@ onMounted(async () => {
       const text = container.getChildByName('text') as PIXI.Text
       const flag = container.getChildByName('flag') as PIXI.Graphics
 
-      // Update texture based on owner and rank
+      // 所有者とランクに基づいてテクスチャを更新
       if (base.isCore || base.rank >= 3) {
         sprite.texture = baseRank3Texture
       } else if (base.rank === 2) {
         sprite.texture = baseRank2Texture
       } else {
-        // Village (Rank 1 and not Core)
+        // 村（Rank 1 かつ本拠地でない場合）
         if (base.owner === 'player') {
           sprite.texture = villagePlayerTexture
         } else if (base.owner === 'neutral') {
@@ -547,33 +547,45 @@ onMounted(async () => {
         }
       }
 
-      // NO SHADERS, NO FILTERS, NO TINT
+      // シェーダー、フィルタ、tintは一切使用しない
       sprite.filters = null
       sprite.tint = 0xffffff
 
-      // Update Flag for Core Bases
+      // 城（Rank 3）と砦（Rank 2）が占領されている場合、および本拠地の場合は旗を表示
       flag.clear()
-      if (base.isCore && base.owner !== 'neutral') {
+      const shouldShowFlag = (base.isCore || base.rank >= 2) && base.owner !== 'neutral'
+      
+      if (shouldShowFlag) {
         flag.visible = true
         const teamColor = OWNER_COLORS[base.owner]
-        // Draw Pole (Simple dark gray line, Raised 1px: -20 to -32)
+        
+        // 砦（Rank 2 かつ本拠地でない）場合のみ旗の位置を3px下げる
+        const flagOffset = (base.rank === 2 && !base.isCore) ? 3 : 0
+        const poleBottom = -20 + flagOffset
+        const poleTop = -32 + flagOffset
+        const flagTop = -32 + flagOffset
+        const flagMid = -28 + flagOffset
+        const flagBottom = -24 + flagOffset
+
+        // ポールを描画（単純な濃い灰色の線）
         flag.setStrokeStyle({ width: 1.5, color: 0x333333 })
-        flag.moveTo(0, -20)
-        flag.lineTo(0, -32)
+        flag.moveTo(0, poleBottom)
+        flag.lineTo(0, poleTop)
         flag.stroke()
-        // Draw Flag Cloth (Triangle: Top at -32)
+
+        // 旗の布部分を描画（三角形）
         flag.beginPath()
         flag.fillStyle = teamColor
-        flag.moveTo(0, -32)
-        flag.lineTo(10, -28)
-        flag.lineTo(0, -24)
+        flag.moveTo(0, flagTop)
+        flag.lineTo(10, flagMid)
+        flag.lineTo(0, flagBottom)
         flag.closePath()
         flag.fill()
         flag.setStrokeStyle({ width: 1, color: 0x000000 })
         flag.stroke()
         
-        // Ensure text is just above flag (Raised 1px from -43 -> -44)
-        text.y = -44
+        // テキストを旗のすぐ上に配置
+        text.y = -44 + flagOffset
       } else {
         flag.visible = false
         // Normal position if no flag (Raised 1px from -21 -> -22)
