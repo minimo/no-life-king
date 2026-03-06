@@ -474,23 +474,12 @@ onMounted(async () => {
         })
         text.name = 'text'
         text.anchor.set(0.5)
-        text.y = -30
+        text.y = -50 // Base position, will be adjusted in update loop
         container.addChild(text)
 
-        const rankText = new PIXI.Text({
-          text: '',
-          style: {
-            fontFamily: 'Arial',
-            fontSize: 12,
-            fontWeight: 'bold',
-            fill: 0xffd700, // Gold
-            stroke: { color: 0x000000, width: 2 }
-          },
-        })
-        rankText.name = 'rank'
-        rankText.anchor.set(0.5)
-        rankText.y = -55
-        container.addChild(rankText)
+        const flag = new PIXI.Graphics()
+        flag.name = 'flag'
+        container.addChild(flag)
 
         baseLayer.addChild(container)
         visuals = { container, zone, highlight }
@@ -500,10 +489,39 @@ onMounted(async () => {
       const { container, zone, highlight } = visuals
       const sprite = container.getChildByName('sprite') as PIXI.Sprite
       const text = container.getChildByName('text') as PIXI.Text
-      const rankText = container.getChildByName('rank') as PIXI.Text
+      const flag = container.getChildByName('flag') as PIXI.Graphics
 
       // Update texture if owner or rank changed
       sprite.texture = getBaseTexture(base)
+
+      // Update Flag for Core Bases
+      flag.clear()
+      if (base.isCore && base.owner !== 'neutral') {
+        flag.visible = true
+        const teamColor = OWNER_COLORS[base.owner]
+        // Draw Pole (Simple dark gray line, Raised 1px: -20 to -32)
+        flag.setStrokeStyle({ width: 1.5, color: 0x333333 })
+        flag.moveTo(0, -20)
+        flag.lineTo(0, -32)
+        flag.stroke()
+        // Draw Flag Cloth (Triangle: Top at -32)
+        flag.beginPath()
+        flag.fillStyle = teamColor
+        flag.moveTo(0, -32)
+        flag.lineTo(10, -28)
+        flag.lineTo(0, -24)
+        flag.closePath()
+        flag.fill()
+        flag.setStrokeStyle({ width: 1, color: 0x000000 })
+        flag.stroke()
+        
+        // Ensure text is just above flag (Raised 1px from -43 -> -44)
+        text.y = -44
+      } else {
+        flag.visible = false
+        // Normal position if no flag (Raised 1px from -21 -> -22)
+        text.y = -22
+      }
 
       zone.clear()
       if (base.owner !== 'neutral') {
@@ -532,7 +550,6 @@ onMounted(async () => {
       }
 
       text.text = Math.floor(base.production).toString()
-      rankText.text = `R${base.rank}`
     })
 
     // Render Units
