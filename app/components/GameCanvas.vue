@@ -70,6 +70,9 @@ const DARK_OWNER_COLORS: Record<Owner, number> = {
   neutral: 0x596363, // Darker gray
 }
 
+// Village roof coloring: We'll generate separate textures at runtime
+// to avoid shader/filter issues that were causing rendering glitches.
+
 const ZONE_COLORS: Record<Owner, number> = {
   player: 0x3498db, // Bright blue
   cpu: 0xff1111,    // Vivid red (to avoid looking yellow)
@@ -261,6 +264,43 @@ onMounted(async () => {
     if (base.rank === 2) return baseRank2Texture
     return baseRank1Texture
   }
+
+  // Function to create a color-replaced texture for village roofs
+  function createVillageTexture(sourceTexture: PIXI.Texture, targetRGB: [number, number, number]) {
+    // Extract pixel data using a temporary canvas
+    const canvas = document.createElement('canvas');
+    canvas.width = 32;
+    canvas.height = 32;
+    const ctx = canvas.getContext('2d')!;
+    
+    // Draw the original texture to canvas
+    const baseSource = sourceTexture.source.resource as HTMLImageElement;
+    const frame = sourceTexture.frame;
+    ctx.drawImage(baseSource, frame.x, frame.y, frame.width, frame.height, 0, 0, 32, 32);
+    
+    const imageData = ctx.getImageData(0, 0, 32, 32);
+    const data = imageData.data;
+    
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i] / 255;
+      const g = data[i+1] / 255;
+      const b = data[i+2] / 255;
+      
+      // Detailed red detection for the roof
+      if (r > g * 1.4 && r > b * 1.4 && r > 0.3) {
+        data[i] = targetRGB[0] * r * 255;
+        data[i+1] = targetRGB[1] * r * 255;
+        data[i+2] = targetRGB[2] * r * 255;
+      }
+    }
+    ctx.putImageData(imageData, 0, 0);
+    return PIXI.Texture.from(canvas);
+  }
+
+  // Pre-generate village textures for each owner
+  const villageNeutralTexture = createVillageTexture(baseRank1Texture, [0.7, 0.7, 0.7]); // Gray
+  const villagePlayerTexture = createVillageTexture(baseRank1Texture, [0.2, 0.6, 1.0]);  // Blue
+  const villageCpuTexture = baseRank1Texture; // Default Red
 
   const playerAnimations = {
     idle: createFrames(playerBaseTexture, 80),
@@ -491,8 +531,25 @@ onMounted(async () => {
       const text = container.getChildByName('text') as PIXI.Text
       const flag = container.getChildByName('flag') as PIXI.Graphics
 
-      // Update texture if owner or rank changed
-      sprite.texture = getBaseTexture(base)
+      // Update texture based on owner and rank
+      if (base.isCore || base.rank >= 3) {
+        sprite.texture = baseRank3Texture
+      } else if (base.rank === 2) {
+        sprite.texture = baseRank2Texture
+      } else {
+        // Village (Rank 1 and not Core)
+        if (base.owner === 'player') {
+          sprite.texture = villagePlayerTexture
+        } else if (base.owner === 'neutral') {
+          sprite.texture = villageNeutralTexture
+        } else {
+          sprite.texture = villageCpuTexture
+        }
+      }
+
+      // NO SHADERS, NO FILTERS, NO TINT
+      sprite.filters = null
+      sprite.tint = 0xffffff
 
       // Update Flag for Core Bases
       flag.clear()
