@@ -608,17 +608,12 @@ onMounted(async () => {
         flagSprite.visible = true
         flagSprite.texture = base.owner === 'player' ? flagPlayerTexture : flagCpuTexture
         
-        // 城・本拠地の場合は 22px 上に配置（32pxだと高すぎたため10px下げた）
-        let flagBaseY = 0
-        if (base.isCore || base.rank >= 3) {
-          flagBaseY = -22
-        } else if (base.rank === 2) {
-          flagBaseY = 0 // 砦は引き続き 0px
-        }
+        // 城・本拠地・砦すべて一旦同じ高さ（22px上）に配置
+        let flagBaseY = -22
         
         flagSprite.y = flagBaseY
         
-        // テキストを旗のさらに上に配置（さらに2px上げた: -17 -> -19）
+        // テキストを旗のさらに上に配置
         text.y = flagSprite.y - 19
       } else {
         flagSprite.visible = false
