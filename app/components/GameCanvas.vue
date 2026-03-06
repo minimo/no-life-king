@@ -371,12 +371,14 @@ onMounted(async () => {
   // Layer Containers for rendering order
   const mapLayer = new PIXI.Container()
   const zoneLayer = new PIXI.Container()
+  const highlightLayer = new PIXI.Container()
   const baseLayer = new PIXI.Container()
   const unitLayer = new PIXI.Container()
   const uiLayer = new PIXI.Container()
 
   app.stage.addChild(mapLayer)
   app.stage.addChild(zoneLayer)
+  app.stage.addChild(highlightLayer)
   app.stage.addChild(baseLayer)
   app.stage.addChild(unitLayer)
   app.stage.addChild(uiLayer)
@@ -453,10 +455,10 @@ onMounted(async () => {
   }
 
   dragLine = new PIXI.Graphics()
-  uiLayer.addChild(dragLine)
+  highlightLayer.addChild(dragLine)
 
   const unitPathGfx = new PIXI.Graphics()
-  uiLayer.addChild(unitPathGfx)
+  highlightLayer.addChild(unitPathGfx)
 
   // Mapping from baseId/unitId to visuals for efficient updates
   const baseVisuals = new Map<string, { container: PIXI.Container, zone: PIXI.Graphics, highlight: PIXI.Graphics }>()
