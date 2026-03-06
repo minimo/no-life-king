@@ -608,8 +608,11 @@ onMounted(async () => {
         flagSprite.visible = true
         flagSprite.texture = base.owner === 'player' ? flagPlayerTexture : flagCpuTexture
         
-        // 城・本拠地・砦すべて一旦同じ高さ（22px上）に配置
+        // 城・本拠地は 22px 上、砦はそれより 4px 下の 18px 上に配置
         let flagBaseY = -22
+        if (base.rank === 2 && !base.isCore) {
+          flagBaseY = -18
+        }
         
         flagSprite.y = flagBaseY
         
