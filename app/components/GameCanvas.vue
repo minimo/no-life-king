@@ -265,6 +265,56 @@ onMounted(async () => {
     return baseRank1Texture
   }
 
+  // ドット絵風の旗テクスチャを作成する関数
+  function createFlagTexture(teamColor: number) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 16;
+    canvas.height = 32;
+    const ctx = canvas.getContext('2d')!;
+    
+    // チームカラーの分解
+    const r = (teamColor >> 16) & 0xFF;
+    const g = (teamColor >> 8) & 0xFF;
+    const b = teamColor & 0xFF;
+
+    // ポール部分（ドット絵風 12px）
+    ctx.fillStyle = '#333333';
+    ctx.fillRect(7, 20, 2, 12); // メインの柱
+    ctx.fillStyle = '#666666';
+    ctx.fillRect(7, 20, 1, 12); // ハイライト
+
+    // 旗の布部分（ドット絵風の三角形、サイズ維持）
+    // アウトライン
+    ctx.fillStyle = '#000000';
+    ctx.beginPath();
+    ctx.moveTo(8, 20);
+    ctx.lineTo(16, 24);
+    ctx.lineTo(8, 28);
+    ctx.fill();
+
+    // メインカラー
+    ctx.fillStyle = `rgb(${r},${g},${b})`;
+    ctx.beginPath();
+    ctx.moveTo(9, 21);
+    ctx.lineTo(14, 24);
+    ctx.lineTo(9, 27);
+    ctx.fill();
+
+    // 陰影（下部）
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    ctx.beginPath();
+    ctx.moveTo(9, 25);
+    ctx.lineTo(14, 24);
+    ctx.lineTo(9, 27);
+    ctx.fill();
+
+    return PIXI.Texture.from(canvas);
+  }
+
+  // 各勢力ごとの旗テクスチャを事前生成
+  const flagPlayerTexture = createFlagTexture(OWNER_COLORS.player);
+  const flagCpuTexture = createFlagTexture(OWNER_COLORS.cpu);
+
   // 村の屋根の色を置換したテクスチャを作成する関数
   function createVillageTexture(sourceTexture: PIXI.Texture, targetRGB: [number, number, number]) {
     // 一時的なCanvasを使用してピクセルデータを抽出
@@ -503,21 +553,21 @@ onMounted(async () => {
         container.addChild(baseSprite)
 
         const text = new PIXI.Text({
-          text: '0',
+          text: '',
           style: {
-            fontFamily: 'Arial',
-            fontSize: 14,
+            fontFamily: 'monospace',
+            fontSize: 10,
             fill: 0xffffff,
-            align: 'center',
-            stroke: { color: 0x000000, width: 2 }
-          },
+            stroke: { color: 0x000000, width: 2 },
+            fontWeight: 'bold'
+          }
         })
-        text.name = 'text'
         text.anchor.set(0.5)
-        text.y = -50 // Base position, will be adjusted in update loop
+        text.name = 'text'
         container.addChild(text)
 
-        const flag = new PIXI.Graphics()
+        const flag = new PIXI.Sprite()
+        flag.anchor.set(0.5, 1.0) // ポールの下端を基準にする
         flag.name = 'flag'
         container.addChild(flag)
 
@@ -529,7 +579,7 @@ onMounted(async () => {
       const { container, zone, highlight } = visuals
       const sprite = container.getChildByName('sprite') as PIXI.Sprite
       const text = container.getChildByName('text') as PIXI.Text
-      const flag = container.getChildByName('flag') as PIXI.Graphics
+      const flagSprite = container.getChildByName('flag') as PIXI.Sprite
 
       // 所有者とランクに基づいてテクスチャを更新
       if (base.isCore || base.rank >= 3) {
@@ -552,43 +602,27 @@ onMounted(async () => {
       sprite.tint = 0xffffff
 
       // 城（Rank 3）と砦（Rank 2）が占領されている場合、および本拠地の場合は旗を表示
-      flag.clear()
       const shouldShowFlag = (base.isCore || base.rank >= 2) && base.owner !== 'neutral'
       
       if (shouldShowFlag) {
-        flag.visible = true
-        const teamColor = OWNER_COLORS[base.owner]
+        flagSprite.visible = true
+        flagSprite.texture = base.owner === 'player' ? flagPlayerTexture : flagCpuTexture
         
-        // 砦（Rank 2 かつ本拠地でない）場合のみ旗の位置を3px下げる
-        const flagOffset = (base.rank === 2 && !base.isCore) ? 3 : 0
-        const poleBottom = -20 + flagOffset
-        const poleTop = -32 + flagOffset
-        const flagTop = -32 + flagOffset
-        const flagMid = -28 + flagOffset
-        const flagBottom = -24 + flagOffset
-
-        // ポールを描画（単純な濃い灰色の線）
-        flag.setStrokeStyle({ width: 1.5, color: 0x333333 })
-        flag.moveTo(0, poleBottom)
-        flag.lineTo(0, poleTop)
-        flag.stroke()
-
-        // 旗の布部分を描画（三角形）
-        flag.beginPath()
-        flag.fillStyle = teamColor
-        flag.moveTo(0, flagTop)
-        flag.lineTo(10, flagMid)
-        flag.lineTo(0, flagBottom)
-        flag.closePath()
-        flag.fill()
-        flag.setStrokeStyle({ width: 1, color: 0x000000 })
-        flag.stroke()
+        // 城・本拠地の場合は 22px 上に配置（32pxだと高すぎたため10px下げた）
+        let flagBaseY = 0
+        if (base.isCore || base.rank >= 3) {
+          flagBaseY = -22
+        } else if (base.rank === 2) {
+          flagBaseY = 0 // 砦は引き続き 0px
+        }
         
-        // テキストを旗のすぐ上に配置
-        text.y = -44 + flagOffset
+        flagSprite.y = flagBaseY
+        
+        // テキストを旗のさらに上に配置（さらに2px上げた: -17 -> -19）
+        text.y = flagSprite.y - 19
       } else {
-        flag.visible = false
-        // Normal position if no flag (Raised 1px from -21 -> -22)
+        flagSprite.visible = false
+        // 旗がない場合の通常位置
         text.y = -22
       }
 
