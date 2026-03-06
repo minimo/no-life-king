@@ -71,9 +71,9 @@ const DARK_OWNER_COLORS: Record<Owner, number> = {
 }
 
 const ZONE_COLORS: Record<Owner, number> = {
-  player: 0x1d272e, // Solid muted blue
-  cpu: 0x2f1f1d,    // Solid muted red
-  neutral: 0x1a1a1a,
+  player: 0x3498db, // Bright blue
+  cpu: 0xff1111,    // Vivid red (to avoid looking yellow)
+  neutral: 0x95a5a6,
 }
 
 // Isometric Coordinate Transformation Constants
@@ -504,8 +504,6 @@ onMounted(async () => {
 
       // Update texture if owner or rank changed
       sprite.texture = getBaseTexture(base)
-      // Tint based on owner for clarity
-      sprite.tint = OWNER_COLORS[base.owner]
 
       zone.clear()
       if (base.owner !== 'neutral') {
@@ -516,7 +514,8 @@ onMounted(async () => {
         zone.fillStyle = ZONE_COLORS[base.owner]
         // Isometric circle is an ellipse matching the map scale
         zone.ellipse(0, 0, base.currentZoneRadius * (SCALE_X / 2), base.currentZoneRadius * (SCALE_Y / 2))
-        zone.fill({ color: ZONE_COLORS[base.owner], alpha: 0.3 })
+        const alpha = base.owner === 'player' ? 0.4 : 0.15 // Make player's blue more prominent
+        zone.fill({ color: ZONE_COLORS[base.owner], alpha })
       }
 
       // Target & Source Highlights
