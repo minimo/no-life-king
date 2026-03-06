@@ -332,9 +332,9 @@ onMounted(async () => {
     const data = imageData.data;
     
     for (let i = 0; i < data.length; i += 4) {
-      const r = data[i] / 255;
-      const g = data[i+1] / 255;
-      const b = data[i+2] / 255;
+      const r = data[i]! / 255;
+      const g = data[i+1]! / 255;
+      const b = data[i+2]! / 255;
       
       // 屋根の赤色部分を詳細に判定
       if (r > g * 1.4 && r > b * 1.4 && r > 0.3) {
