@@ -42,9 +42,9 @@ export interface Unit {
 }
 
 export const RANK_CONFIG = {
-    1: { cap: 100, growth: 2, upgradeCost: Infinity },
-    2: { cap: 150, growth: 3, upgradeCost: 80 },
-    3: { cap: 999, growth: 4.5, upgradeCost: 120 },
+    1: { cap: 100, growth: 2.0, upgradeCost: 80 },
+    2: { cap: 150, growth: 3.0, upgradeCost: 120 },
+    3: { cap: 999, growth: 4.5, upgradeCost: Infinity },
 }
 
 const UNIT_SPEED = 30 // px/sec
@@ -967,20 +967,22 @@ export const useGameStore = defineStore('game', {
             }
         },
 
-        upgradeBase(baseId: string): void {
+        upgradeBase(baseId: string): boolean {
             const base = this.bases.find(b => b.id === baseId)
-            if (!base || base.rank >= 3) return
+            if (!base || base.rank >= 3) return false
 
-            const nextRank = (base.rank + 1) as Rank
-            const cost = RANK_CONFIG[nextRank === 2 ? 2 : 3].upgradeCost // Simplification: next rank cost
+            const config = RANK_CONFIG[base.rank]
+            const cost = config.upgradeCost
 
             if (base.production >= cost) {
                 base.production -= cost
-                base.rank = nextRank
-                const config = RANK_CONFIG[nextRank]
-                base.productionCap = config.cap
-                base.growthRate = config.growth
+                base.rank = (base.rank + 1) as Rank
+                const nextConfig = RANK_CONFIG[base.rank]
+                base.productionCap = nextConfig.cap
+                base.growthRate = nextConfig.growth
+                return true
             }
+            return false
         },
 
         updateCPU(delta: number): void {
@@ -1033,8 +1035,8 @@ export const useGameStore = defineStore('game', {
 
             // 4. Upgrade if possible
             if (source && source.rank < 3) {
-                const nextRank = (source.rank + 1) as Rank
-                const cost = (nextRank === 2 ? RANK_CONFIG[2].upgradeCost : RANK_CONFIG[3].upgradeCost) as number;
+                const config = RANK_CONFIG[source.rank];
+                const cost = config.upgradeCost;
                 if (source.production >= cost + 20) { // Keep some production for defense
                     this.upgradeBase(source.id)
                 }

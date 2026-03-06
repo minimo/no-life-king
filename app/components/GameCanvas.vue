@@ -38,14 +38,18 @@ const contextMenu = ref<{
   targetId: null
 })
 
+const upgradeCost = computed(() => {
+  if (contextMenu.value.type !== 'base' || !contextMenu.value.targetId) return 0
+  const base = gameStore.bases.find((b: Base) => b.id === contextMenu.value.targetId)
+  if (!base || base.rank >= 3) return 0
+  return RANK_CONFIG[base.rank].upgradeCost
+})
+
 const canUpgradeTargetBase = computed(() => {
   if (contextMenu.value.type !== 'base' || !contextMenu.value.targetId) return false
   const base = gameStore.bases.find((b: Base) => b.id === contextMenu.value.targetId)
   if (!base || base.rank >= 3) return false
-  
-  const nextRank = (base.rank + 1) as Rank
-  const cost = RANK_CONFIG[nextRank === 2 ? 2 : 3].upgradeCost
-  return base.production >= cost
+  return base.production >= upgradeCost.value
 })
 
 let app: PIXI.Application | null = null
@@ -114,6 +118,41 @@ function fromIso(screenX: number, screenY: number) {
     x: rx + LOGICAL_SIZE / 2, 
     y: ry + LOGICAL_SIZE / 2 
   }
+}
+
+const effectLayer = new PIXI.Container() // For floating texts
+
+function createFloatingText(text: string, x: number, y: number, color: number = 0xffff00) {
+  if (!app) return
+
+  const label = new PIXI.Text({
+    text,
+    style: {
+      fontFamily: 'Arial',
+      fontSize: 20,
+      fontWeight: 'bold',
+      fill: color,
+      stroke: { color: 0x000000, width: 4 },
+    }
+  })
+  label.anchor.set(0.5)
+  label.x = x
+  label.y = y
+  effectLayer.addChild(label)
+
+  let elapsed = 0
+  const duration = 1.0
+  const ticker = (t: PIXI.Ticker) => {
+    const dt = t.deltaTime / 60
+    elapsed += dt
+    label.y -= 40 * dt
+    label.alpha = 1 - (elapsed / duration)
+    if (elapsed >= duration) {
+      app?.ticker.remove(ticker)
+      label.destroy()
+    }
+  }
+  app.ticker.add(ticker)
 }
 
 function createFrames(texture: PIXI.Texture, yOffset: number, count = 4) {
@@ -332,6 +371,7 @@ onMounted(async () => {
   // Mapping from baseId/unitId to visuals for efficient updates
   const baseVisuals = new Map<string, { container: PIXI.Container, zone: PIXI.Graphics, highlight: PIXI.Graphics }>()
   const unitVisuals = new Map<string, { container: PIXI.Container, sprite: PIXI.AnimatedSprite, text: PIXI.Text }>()
+  uiLayer.addChild(effectLayer)
 
   app.ticker.add((ticker) => {
     const deltaSeconds = ticker.deltaTime / 60
@@ -441,13 +481,15 @@ onMounted(async () => {
           text: '',
           style: {
             fontFamily: 'Arial',
-            fontSize: 10,
-            fill: 0xffffff,
+            fontSize: 12,
+            fontWeight: 'bold',
+            fill: 0xffd700, // Gold
+            stroke: { color: 0x000000, width: 2 }
           },
         })
         rankText.name = 'rank'
         rankText.anchor.set(0.5)
-        rankText.y = -50
+        rankText.y = -55
         container.addChild(rankText)
 
         baseLayer.addChild(container)
@@ -931,8 +973,11 @@ const handleGlobalPointerUp = async (e: PointerEvent) => {
 
   // Close context menu if clicking anywhere else
   if (contextMenu.value.visible) {
-     closeContextMenu()
-     // Wait for click to clear if menu was open
+     // Check if click was inside the context menu
+     const isInsideMenu = contextMenuRef.value?.contains(e.target as Node)
+     if (!isInsideMenu) {
+        closeContextMenu()
+     }
   }
 
   if (multiSendTargetId.value) {
@@ -967,7 +1012,14 @@ const handleGlobalPointerUp = async (e: PointerEvent) => {
 
 const handleContextMenuAction = (action: string) => {
   if (action === 'upgrade' && contextMenu.value.type === 'base' && contextMenu.value.targetId) {
-    gameStore.upgradeBase(contextMenu.value.targetId)
+    const success = gameStore.upgradeBase(contextMenu.value.targetId)
+    if (success) {
+      const base = gameStore.bases.find(b => b.id === contextMenu.value.targetId)
+      if (base) {
+        const pos = toIso(base.x, base.y)
+        createFloatingText('RANK UP!', pos.x, pos.y - 60, 0x2ecc71)
+      }
+    }
   } else if (action === 'stop' && contextMenu.value.type === 'unit' && contextMenu.value.targetId) {
     gameStore.stopUnit(contextMenu.value.targetId)
   }
@@ -1018,7 +1070,7 @@ onUnmounted(() => {
             :disabled="!canUpgradeTargetBase"
             @click="handleContextMenuAction('upgrade')"
           >
-            <span>アップグレード</span>
+            <span>アップグレード ({{ upgradeCost }})</span>
           </button>
         </template>
         
