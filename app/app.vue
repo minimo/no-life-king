@@ -2,6 +2,7 @@
 import { useGameStore } from '~/stores/game'
 import GameCanvas from '~/components/GameCanvas.vue'
 import TitleScreen from '~/components/TitleScreen.vue'
+import TimeDisplay from '~/components/TimeDisplay.vue'
 
 const gameStore = useGameStore()
 </script>
@@ -12,7 +13,7 @@ const gameStore = useGameStore()
     
     <template v-else>
       <header class="game-header">
-        <h1>No-Life-King</h1>
+        <TimeDisplay />
       </header>
 
       <main class="game-view">
@@ -61,8 +62,12 @@ body {
 }
 
 .game-header {
-  padding: 1rem;
-  text-align: center;
+  height: 64px;
+  padding: 2px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: linear-gradient(180deg, #1a1a1a 0%, #121212 100%);
   border-bottom: 1px solid #333;
 }
