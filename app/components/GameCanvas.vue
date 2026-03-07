@@ -465,9 +465,38 @@ onMounted(async () => {
   const unitVisuals = new Map<string, { container: PIXI.Container, sprite: PIXI.AnimatedSprite, text: PIXI.Text }>()
   uiLayer.addChild(effectLayer)
 
+  // 夜間の暗さを計算する関数（0〜0.5）
+  function getNightAlpha(dayTime: number): number {
+    // 06:00〜17:00 (360〜1020): 昼（明るい）
+    if (dayTime >= 360 && dayTime < 1020) return 0
+    // 17:00〜18:00 (1020〜1080): 夕暮れ遷移
+    if (dayTime >= 1020 && dayTime < 1080) return ((dayTime - 1020) / 60) * 0.5
+    // 18:00〜翌05:00 (1080〜300): 夜（最大の暗さ）
+    if (dayTime >= 1080 || dayTime < 300) return 0.5
+    // 05:00〜06:00 (300〜360): 夜明け遷移
+    if (dayTime >= 300 && dayTime < 360) return ((360 - dayTime) / 60) * 0.5
+    return 0
+  }
+
+  // 夜間の暗さからtint値を計算（暗い紺色への遷移）
+  function getNightTint(dayTime: number): number {
+    const alpha = getNightAlpha(dayTime)
+    if (alpha <= 0) return 0xffffff
+    // R,Gチャンネルをやや減衰、Bチャンネルは控えめに減衰させ夜の雰囲気を出す
+    const r = Math.round(255 * (1 - alpha * 0.9))
+    const g = Math.round(255 * (1 - alpha * 0.9))
+    const b = Math.round(255 * (1 - alpha * 0.5))
+    return (Math.max(0, r) << 16) | (Math.max(0, g) << 8) | Math.max(0, b)
+  }
+
   app.ticker.add((ticker) => {
     const deltaSeconds = ticker.deltaTime / 60
     gameStore.update(deltaSeconds)
+
+    // 夜間tintの計算（マップオブジェクトのみに適用、UIテキストは対象外）
+    const nightTint = getNightTint(gameStore.dayTime)
+    mapLayer.tint = nightTint
+    zoneLayer.tint = nightTint
     
     // Convert screen mouse pos to logical world pos for interaction
     const logicalMouse = fromIso(mousePos.value.x, mousePos.value.y)
@@ -599,9 +628,10 @@ onMounted(async () => {
         }
       }
 
-      // シェーダー、フィルタ、tintは一切使用しない
+      // 夜間tintをスプライトに適用（テキストは対象外）
       sprite.filters = null
-      sprite.tint = 0xffffff
+      sprite.tint = nightTint
+      flagSprite.tint = nightTint
 
       // 城（Rank 3）と砦（Rank 2）が占領されている場合、および本拠地の場合は旗を表示
       const shouldShowFlag = (base.isCore || base.rank >= 2) && base.owner !== 'neutral'
@@ -769,6 +799,7 @@ onMounted(async () => {
         
         // Flip sprite for right movement (original is left-facing: scale.x = 1.5)
         sprite.scale.x = isMovingRight ? -1.0 : 1.0
+        sprite.tint = nightTint // 夜間tintをユニットスプライトに適用
         
         const isPlayer = unit.owner === 'player'
         const anims = isPlayer ? playerAnimations : cpuAnimations

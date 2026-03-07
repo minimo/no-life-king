@@ -18,11 +18,39 @@ export interface Base {
     currentZoneRadius: number
 }
 
-export function calculateTargetZoneRadius(base: Base): number {
+/** dayTimeが昼間(6:00-18:00 = 360-1080分)かどうかを返す */
+export function isDaytime(dayTime: number): boolean {
+    return dayTime >= 360 && dayTime < 1080
+}
+
+/** 時間帯による移動速度倍率を返す（昼間CPU: ×0.6、夜間プレイヤー: ×0.75） */
+function getTimeSpeedMultiplier(owner: Owner, dayTime: number): number {
+    if (owner === 'neutral') return 1.0
+    const daytime = isDaytime(dayTime)
+    // 昼間: CPUが0.6倍、夜間: プレイヤーが0.75倍
+    if (daytime && owner === 'cpu') return 0.6
+    if (!daytime && owner === 'player') return 0.75
+    return 1.0
+}
+
+/** 時間帯による防御力消費倍率を返す（昼間CPU: ×1.5、夜間プレイヤー: ×1.3） */
+function getTimeDecayMultiplier(owner: Owner, dayTime: number): number {
+    const daytime = isDaytime(dayTime)
+    if (daytime && owner === 'cpu') return 1.5
+    if (!daytime && owner === 'player') return 1.3
+    return 1.0
+}
+
+export function calculateTargetZoneRadius(base: Base, dayTime: number): number {
     if (base.owner === 'neutral') return 0
     // Radius: 75 to 150, proportional to production (cap is max)
     const ratio = Math.min(1, base.production / base.productionCap)
-    return 75 + (150 - 75) * ratio
+    let radius = 75 + (150 - 75) * ratio
+    // 昼間: CPUの支配領域×0.65、夜間: プレイヤーの支配領域×0.75
+    const daytime = isDaytime(dayTime)
+    if (daytime && base.owner === 'cpu') radius *= 0.65
+    if (!daytime && base.owner === 'player') radius *= 0.75
+    return radius
 }
 
 export interface Unit {
@@ -797,7 +825,7 @@ export const useGameStore = defineStore('game', {
                 }
 
                 // Update Zone Radius with Lerp (0.5s time constant)
-                const target = calculateTargetZoneRadius(base)
+                const target = calculateTargetZoneRadius(base, this.dayTime)
                 const easeSpeed = 2.0
                 base.currentZoneRadius += (target - base.currentZoneRadius) * easeSpeed * deltaSeconds
             }
@@ -866,8 +894,9 @@ export const useGameStore = defineStore('game', {
                             const dist = Math.hypot(dx, dy)
                             if (dist > 2) {
                                 const pursuitSpeedMult = getTerrainSpeedMultiplier(this.mapGrid, unit.x, unit.y, unit.owner, this.bases)
-                                unit.x += (dx / dist) * UNIT_SPEED * pursuitSpeedMult * deltaSeconds
-                                unit.y += (dy / dist) * UNIT_SPEED * pursuitSpeedMult * deltaSeconds
+                                const pursuitTimeMult = getTimeSpeedMultiplier(unit.owner, this.dayTime)
+                                unit.x += (dx / dist) * UNIT_SPEED * pursuitSpeedMult * pursuitTimeMult * deltaSeconds
+                                unit.y += (dy / dist) * UNIT_SPEED * pursuitSpeedMult * pursuitTimeMult * deltaSeconds
                             }
                         } else {
                             unit.pursuitTargetId = null
@@ -877,7 +906,8 @@ export const useGameStore = defineStore('game', {
                         const nextWP = unit.path[unit.pathIndex + 1]
                         if (nextWP) {
                             const moveSpeedMult = getTerrainSpeedMultiplier(this.mapGrid, unit.x, unit.y, unit.owner, this.bases)
-                            const speed = UNIT_SPEED * moveSpeedMult
+                            const moveTimeMult = getTimeSpeedMultiplier(unit.owner, this.dayTime)
+                            const speed = UNIT_SPEED * moveSpeedMult * moveTimeMult
                             const dx = nextWP.x - unit.x
                             const dy = nextWP.y - unit.y
                             const dist = Math.hypot(dx, dy)
@@ -920,7 +950,8 @@ export const useGameStore = defineStore('game', {
 
                         if (decayMultiplier > 0) {
                             const decayRate = 1.0 // 1 power per second
-                            unit.power -= decayRate * decayMultiplier * deltaSeconds
+                            const timeDecay = getTimeDecayMultiplier(unit.owner, this.dayTime)
+                            unit.power -= decayRate * decayMultiplier * timeDecay * deltaSeconds
                         }
                     }
                 }
