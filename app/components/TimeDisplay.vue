@@ -18,7 +18,8 @@ const getSkyStyle = (hour: number, opacity: number, zIndex: number) => {
   const row = elapsed % 6
   const col = Math.floor(elapsed / 6)
   
-  const targetX = 192 + (col * 96)
+  const scaleX = 2.0 // 横方向を2倍に
+  const targetX = (192 + (col * 96)) * scaleX
   const targetY = (row * 80) + 23
   
   // 高さが 60px に拡大されたため、スケール比率を 60/41 に更新
@@ -26,7 +27,7 @@ const getSkyStyle = (hour: number, opacity: number, zIndex: number) => {
   
   return {
     backgroundPosition: `-${targetX}px -${targetY * scaleY}px`,
-    backgroundSize: `976px ${800 * scaleY}px`,
+    backgroundSize: `${976 * scaleX}px ${800 * scaleY}px`,
     opacity: opacity,
     zIndex: zIndex
   }
@@ -74,8 +75,8 @@ const getCelestialStyle = (type: 'sun' | 'moon') => {
     progress = dt >= 1080 ? (dt - 1080) / 720 : (dt + 360) / 720
   }
   
-  // 0% 〜 80% の範囲で移動。位置だけ 16px 下にオフセット（45 -> 61）
-  const x = progress * 80
+  // 10% 〜 90% の範囲で移動（南中が中央50%に来るように調整）
+  const x = 10 + progress * 80
   const y = 61 - Math.sin(progress * Math.PI) * 42 
   
   return {
@@ -122,7 +123,7 @@ const moonStyle = computed(() => getCelestialStyle('moon'))
 
 .time-view {
   position: relative;
-  width: 96px; /* 192px から元に戻す */
+  width: 192px; /* 96px から倍に拡大 */
   height: 60px; /* 24px から 60px に拡大 */
   overflow: hidden;
   background: #000;
