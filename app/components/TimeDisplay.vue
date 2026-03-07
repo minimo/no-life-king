@@ -81,6 +81,30 @@ const getCelestialStyle = (type: 'sun' | 'moon') => {
 
 const sunStyle = computed(() => getCelestialStyle('sun'))
 const moonStyle = computed(() => getCelestialStyle('moon'))
+
+// 風景レイヤーのスタイル計算
+// 1段目: x=0, y=656, w=96, h=64, 9コマ
+// 2段目: x=0, y=736, w=96, h=64, 9コマ
+const landStyle = computed(() => {
+  const scaleX = 2.0 // 横方向を2倍に（96px → 192px）
+  
+  // 2段目のフレーム2を使用 (x=96, y=736)
+  const spriteX = 1 * 96 // フレーム2 (0始まりインデックス1)
+  const spriteY = 736
+  const spriteH = 64
+  const displayH = 24 // 表示する高さ（スプライトの下部を表示）
+  
+  // スプライトの下部を表示するためのオフセット
+  const cropTop = spriteH - displayH // 上部をカットする量 = 40px
+  const posX = spriteX * scaleX
+  const posY = spriteY + cropTop // 656 + 40 = 696
+  
+  return {
+    backgroundPosition: `-${posX}px -${posY}px`,
+    backgroundSize: `${976 * scaleX}px 800px`, // 横2倍、高さはそのまま
+    height: `${displayH}px`
+  }
+})
 </script>
 
 <template>
@@ -98,8 +122,9 @@ const moonStyle = computed(() => getCelestialStyle('moon'))
       <div class="celestial-layer sun-layer" :style="sunStyle"></div>
       <div class="celestial-layer moon-layer" :style="moonStyle"></div>
       
-      <!-- 風景 -->
-      <div class="land-layer"></div>
+      
+      <!-- 風景（時間帯に応じた景観） -->
+      <div class="land-layer" :style="landStyle"></div>
     </div>
   </div>
 </template>
@@ -147,15 +172,15 @@ const moonStyle = computed(() => getCelestialStyle('moon'))
 
 .land-layer {
   position: absolute;
-  bottom: 0;
+  bottom: -5px; /* 5px 下にオフセット */
   left: 0;
   width: 100%;
-  height: 6px; /* 3px から 6px に微調整 */
+  /* height は JS の landStyle で動的に設定 */
   background-image: url('/assets/Denzi100225-4.png');
-  background-position: -384px -692px;
   background-repeat: no-repeat;
+  image-rendering: pixelated;
   z-index: 6;
-  opacity: 0.3; /* 少し濃く修正 */
+  opacity: 0.9;
 }
 
 .time-label {
