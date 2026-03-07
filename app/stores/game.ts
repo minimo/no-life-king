@@ -1022,6 +1022,11 @@ export const useGameStore = defineStore('game', {
             return false
         },
 
+        // A*経路探索のラッパー（GameCanvas.vueからプレビュー用に利用）
+        getPath(startWX: number, startWY: number, endWX: number, endWY: number, owner: Owner): { x: number; y: number }[] {
+            return findPath(this.mapGrid, startWX, startWY, endWX, endWY, owner)
+        },
+
         updateCPU(delta: number): void {
             this.cpuThinkingTimer -= delta
             if (this.cpuThinkingTimer <= 0) {

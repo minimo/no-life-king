@@ -36,11 +36,13 @@ const getSkyStyle = (hour: number, opacity: number, zIndex: number) => {
 // 遷移情報（現在の時間、前の時間、それぞれの不透明度）
 const layerInfo = computed(() => {
   const dt = gameStore.dayTime
-  const hour = Math.floor(dt / 60) % 24
-  const minutes = dt % 60
+  // 45分前倒し: 6:15 から 7:00 の背景への遷移が始まる
+  const shifted = (dt + 45) % 1440
+  const hour = Math.floor(shifted / 60) % 24
+  const minutes = shifted % 60
   
-  // 00分 〜 60分 は前後のクロスフェード期間
-  const FADE_DURATION = 60
+  // 00分 〜 45分 は前後のクロスフェード期間
+  const FADE_DURATION = 45
   
   if (minutes < FADE_DURATION) {
     const progress = minutes / FADE_DURATION
@@ -55,29 +57,18 @@ const layerInfo = computed(() => {
   }
 })
 
-// 天体の周回スタイル計算ヘルパー
+// 天体の周回スタイル計算ヘルパー（24時間で連続周回）
 const getCelestialStyle = (type: 'sun' | 'moon') => {
   const dt = gameStore.dayTime
   const isSun = type === 'sun'
-  
-  // 出没時間の判定
-  const isActive = isSun 
-    ? (dt >= 360 && dt < 1080)    // 太陽: 6:00 〜 18:00
-    : (dt >= 1080 || dt < 360)   // 月: 18:00 〜 翌6:00
-    
-  if (!isActive) return { opacity: 0, display: 'none' }
 
-  // 進行度 (0.0 〜 1.0)
-  let progress = 0
-  if (isSun) {
-    progress = (dt - 360) / 720
-  } else {
-    progress = dt >= 1080 ? (dt - 1080) / 720 : (dt + 360) / 720
-  }
+  // 24時間で1周する角度（太陽は6:00起点、月は18:00起点）
+  const startTime = isSun ? 360 : 1080
+  const angle = ((dt - startTime + 1440) % 1440) / 1440 * Math.PI * 2
   
-  // 10% 〜 90% の範囲で移動（南中が中央50%に来るように調整）
-  const x = 10 + progress * 80
-  const y = 61 - Math.sin(progress * Math.PI) * 42 
+  // 楕円軌道: cos で水平移動、sin で垂直移動
+  const x = 55 - Math.cos(angle) * 40   // 15% 〜 95% の範囲
+  const y = 70 - Math.sin(angle) * 42   // 上に弧を描き、下に沈む
   
   return {
     left: `${x}%`,
@@ -148,7 +139,7 @@ const moonStyle = computed(() => getCelestialStyle('moon'))
   height: 32px;
   background-image: url('/assets/Denzi100225-4.png');
   background-repeat: no-repeat;
-  scale: 0.7; /* 0.35 から倍の大きさに変更 */
+  scale: 1.4; /* 0.7 から倍の大きさに変更 */
   pointer-events: none;
   z-index: 5;
   transform: translate(-50%, -50%); /* 中心基準で配置 */

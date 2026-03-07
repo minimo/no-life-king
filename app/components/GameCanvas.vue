@@ -994,51 +994,170 @@ onMounted(async () => {
 
     if (sCx === tCx && sCy === tCy) return
 
-    // 楕円中心同士を結ぶ角度
-    const centerAngle = Math.atan2(tCy - sCy, tCx - sCx)
+    const color = 0x2ecc71
+    const darkColor = 0x1a8a4a
 
-    // 始点: ソース楕円の外周から
-    let fromX: number, fromY: number
-    if (sourceIsBase) {
-      const edge = ellipseEdge(sCx, sCy, HIGHLIGHT_HW, HIGHLIGHT_HH, centerAngle)
-      fromX = edge.x
-      fromY = edge.y
+    // ターゲットが拠点の場合はA*パスを使用、そうでない場合は直線
+    if (targetIsBase && sourceIsBase) {
+      // A*パスを取得（プレイヤーの経路コストで計算）
+      const pathPoints = gameStore.getPath(source.x, source.y, target.x, target.y, 'player')
+
+      // パスをISO座標に変換
+      const isoPoints: { x: number; y: number }[] = pathPoints.map(p => toIso(p.x, p.y))
+
+      if (isoPoints.length < 2) return
+
+      // 始点: ソース楕円の外周から
+      const firstNext = isoPoints[1]!
+      const startAngle = Math.atan2(firstNext.y - sCy, firstNext.x - sCx)
+      const startEdge = ellipseEdge(sCx, sCy, HIGHLIGHT_HW, HIGHLIGHT_HH, startAngle)
+
+      // 終点: ターゲット楕円の外周まで
+      const lastPt = isoPoints[isoPoints.length - 1]!
+      const prevPt = isoPoints[isoPoints.length - 2]!
+      const endAngle = Math.atan2(prevPt.y - (lastPt.y + HIGHLIGHT_OFFSET_Y), prevPt.x - lastPt.x)
+      const endEdge = ellipseEdge(tCx, tCy, HIGHLIGHT_HW, HIGHLIGHT_HH, endAngle)
+
+      // 距離が近すぎる場合は省略
+      const distBetween = Math.hypot(endEdge.x - startEdge.x, endEdge.y - startEdge.y)
+      if (distBetween <= 0) return
+
+      // 線を描画（暗い縁取り）
+      g.setStrokeStyle({ width: 7, color: darkColor, alpha: 0.8 })
+      g.moveTo(startEdge.x, startEdge.y)
+      for (let pi = 1; pi < isoPoints.length - 1; pi++) {
+        g.lineTo(isoPoints[pi]!.x, isoPoints[pi]!.y)
+      }
+      g.lineTo(endEdge.x, endEdge.y)
+      g.stroke()
+
+      // 線を描画（メイン色）
+      g.setStrokeStyle({ width: 5, color, alpha: 0.8 })
+      g.moveTo(startEdge.x, startEdge.y)
+      for (let pi = 1; pi < isoPoints.length - 1; pi++) {
+        g.lineTo(isoPoints[pi]!.x, isoPoints[pi]!.y)
+      }
+      g.lineTo(endEdge.x, endEdge.y)
+      g.stroke()
+
+      // 終端の矢印
+      const arrowAngle = Math.atan2(endEdge.y - prevPt.y, endEdge.x - prevPt.x)
+      const headLen = 16
+      const p1x = endEdge.x, p1y = endEdge.y
+      const p2x = endEdge.x - headLen * Math.cos(arrowAngle - Math.PI / 6)
+      const p2y = endEdge.y - headLen * Math.sin(arrowAngle - Math.PI / 6)
+      const p3x = endEdge.x - headLen * Math.cos(arrowAngle + Math.PI / 6)
+      const p3y = endEdge.y - headLen * Math.sin(arrowAngle + Math.PI / 6)
+
+      // 暗い縁取り
+      const baseLen = Math.hypot(p3x - p2x, p3y - p2y)
+      const gap = 6
+      const ratio = Math.max(0, (baseLen - gap) / 2 / baseLen)
+      const p2_inner_x = p2x + (p3x - p2x) * ratio
+      const p2_inner_y = p2y + (p3y - p2y) * ratio
+      const p3_inner_x = p3x + (p2x - p3x) * ratio
+      const p3_inner_y = p3y + (p2y - p3y) * ratio
+
+      g.setStrokeStyle({ width: 3, color: darkColor, alpha: 0.8, join: 'round' })
+      g.beginPath()
+      g.moveTo(p2_inner_x, p2_inner_y)
+      g.lineTo(p2x, p2y)
+      g.lineTo(p1x, p1y)
+      g.lineTo(p3x, p3y)
+      g.lineTo(p3_inner_x, p3_inner_y)
+      g.stroke()
+
+      // メイン色塗りつぶし
+      g.setStrokeStyle({ width: 0 })
+      g.beginPath()
+      g.moveTo(p1x, p1y)
+      g.lineTo(p2x, p2y)
+      g.lineTo(p3x, p3y)
+      g.closePath()
+      g.fill({ color, alpha: 0.8 })
     } else {
-      fromX = sPos.x
-      fromY = sPos.y
+      // ターゲットが拠点でない場合もA*パスで折れ線描画
+      const pathPoints = gameStore.getPath(source.x, source.y, target.x, target.y, 'player')
+      const isoPoints: { x: number; y: number }[] = pathPoints.map(p => toIso(p.x, p.y))
+
+      if (isoPoints.length < 2) return
+
+      // 始点: ソース楕円の外周から（ソースが拠点の場合）
+      let fromX: number, fromY: number
+      if (sourceIsBase) {
+        const firstNext = isoPoints[1]!
+        const startAngle = Math.atan2(firstNext.y - sCy, firstNext.x - sCx)
+        const startEdge = ellipseEdge(sCx, sCy, HIGHLIGHT_HW, HIGHLIGHT_HH, startAngle)
+        fromX = startEdge.x
+        fromY = startEdge.y
+      } else {
+        fromX = sPos.x
+        fromY = sPos.y
+      }
+
+      // 終点: マウス位置そのまま
+      const lastPt = isoPoints[isoPoints.length - 1]!
+      const toX = lastPt.x
+      const toY = lastPt.y
+
+      const dist = Math.hypot(toX - fromX, toY - fromY)
+      if (dist <= 0) return
+
+      // 線を描画（暗い縁取り）
+      g.setStrokeStyle({ width: 7, color: darkColor, alpha: 0.8 })
+      g.moveTo(fromX, fromY)
+      for (let pi = 1; pi < isoPoints.length - 1; pi++) {
+        g.lineTo(isoPoints[pi]!.x, isoPoints[pi]!.y)
+      }
+      g.lineTo(toX, toY)
+      g.stroke()
+
+      // 線を描画（メイン色）
+      g.setStrokeStyle({ width: 5, color, alpha: 0.8 })
+      g.moveTo(fromX, fromY)
+      for (let pi = 1; pi < isoPoints.length - 1; pi++) {
+        g.lineTo(isoPoints[pi]!.x, isoPoints[pi]!.y)
+      }
+      g.lineTo(toX, toY)
+      g.stroke()
+
+      // 終端の矢印
+      const prevPt = isoPoints.length >= 2 ? isoPoints[isoPoints.length - 2]! : { x: fromX, y: fromY }
+      const arrowAngle = Math.atan2(toY - prevPt.y, toX - prevPt.x)
+      const headLen = 16
+      const p1x = toX, p1y = toY
+      const p2x = toX - headLen * Math.cos(arrowAngle - Math.PI / 6)
+      const p2y = toY - headLen * Math.sin(arrowAngle - Math.PI / 6)
+      const p3x = toX - headLen * Math.cos(arrowAngle + Math.PI / 6)
+      const p3y = toY - headLen * Math.sin(arrowAngle + Math.PI / 6)
+
+      // 暗い縁取り
+      const baseLen = Math.hypot(p3x - p2x, p3y - p2y)
+      const gap = 6
+      const ratio = Math.max(0, (baseLen - gap) / 2 / baseLen)
+      const p2_inner_x = p2x + (p3x - p2x) * ratio
+      const p2_inner_y = p2y + (p3y - p2y) * ratio
+      const p3_inner_x = p3x + (p2x - p3x) * ratio
+      const p3_inner_y = p3y + (p2y - p3y) * ratio
+
+      g.setStrokeStyle({ width: 3, color: darkColor, alpha: 0.8, join: 'round' })
+      g.beginPath()
+      g.moveTo(p2_inner_x, p2_inner_y)
+      g.lineTo(p2x, p2y)
+      g.lineTo(p1x, p1y)
+      g.lineTo(p3x, p3y)
+      g.lineTo(p3_inner_x, p3_inner_y)
+      g.stroke()
+
+      // メイン色塗りつぶし
+      g.setStrokeStyle({ width: 0 })
+      g.beginPath()
+      g.moveTo(p1x, p1y)
+      g.lineTo(p2x, p2y)
+      g.lineTo(p3x, p3y)
+      g.closePath()
+      g.fill({ color, alpha: 0.8 })
     }
-
-    // 終点: ターゲット楕円の外周（逆方向）
-    let toX: number, toY: number
-    if (targetIsBase) {
-      const edge = ellipseEdge(tCx, tCy, HIGHLIGHT_HW, HIGHLIGHT_HH, centerAngle + Math.PI)
-      toX = edge.x
-      toY = edge.y
-    } else {
-      toX = tPos.x
-      toY = tPos.y
-    }
-
-    const dist = Math.hypot(toX - fromX, toY - fromY)
-    if (dist <= 0) return
-
-    // 矢印の角度は実際の始点→終点ベクトルで計算
-    const arrowAngle = Math.atan2(toY - fromY, toX - fromX)
-    const headLength = 20
-    
-    g.setStrokeStyle({ width: 5, color: 0x2ecc71, alpha: 0.8 })
-    g.moveTo(fromX, fromY)
-    g.lineTo(toX, toY)
-    g.stroke()
-
-    g.setStrokeStyle({ width: 0 })
-    g.beginPath()
-    g.fillStyle = 0x2ecc71
-    g.moveTo(toX, toY)
-    g.lineTo(toX - headLength * Math.cos(arrowAngle - Math.PI / 6), toY - headLength * Math.sin(arrowAngle - Math.PI / 6))
-    g.lineTo(toX - headLength * Math.cos(arrowAngle + Math.PI / 6), toY - headLength * Math.sin(arrowAngle + Math.PI / 6))
-    g.closePath()
-    g.fill()
   }
 
   // Global mouse move and up
