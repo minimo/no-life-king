@@ -100,7 +100,7 @@ function getTerrainSpeedMultiplier(mapGrid: number[][], worldX: number, worldY: 
 
     // 水
     if (tile === 1) {
-        mult = (inZone || owner !== 'cpu') ? 0.4 : 0.1
+        mult = 0.0 // 侵入不可
     }
     // 橋
     else if (tile === 4) { mult = 1.0 }
@@ -125,7 +125,7 @@ function getTerrainSpeedMultiplier(mapGrid: number[][], worldX: number, worldY: 
 function getTileCost(mapGrid: number[][], gx: number, gy: number, owner: Owner): number {
     if (gy < 0 || gy > 50 || gx < 0 || gx > 50) return 1.0
     const tile = mapGrid[gy]?.[gx] ?? 0
-    if (tile === 1) return owner === 'cpu' ? 10.0 : 2.5 // 水
+    if (tile === 1) return Infinity // 水（侵入不可）
     if (tile === 4) return 1.0 // 橋
     if (tile === 21 || tile === 22) return 2.0 // 低山
     if (tile === 23 || tile === 24) return 2.86 // 高山
@@ -678,6 +678,10 @@ export const useGameStore = defineStore('game', {
                     const tile = this.mapGrid[gy]![gx]
                     if (tile === 1 || tile === 4) return false // Water or Bridge
                 }
+                // Check distance from existing bases
+                const tooClose = this.bases.some(b => Math.hypot(b.x - wx, b.y - wy) < minDistance)
+                if (tooClose) return false
+
                 return true
             }
 
@@ -700,25 +704,49 @@ export const useGameStore = defineStore('game', {
             // CPU Core (Top-Right map corner)
             placeCore('c-core', 'cpu', size - margin, margin, -16, 16)
 
-            // Create Neutral Bases
-            const minTotalBases = 8
-            const maxTotalBases = 14
-            const baseCount = Math.floor(Math.random() * (maxTotalBases - minTotalBases + 1)) + minTotalBases
-            let neutralAttempts = 0
-            while (this.bases.length < baseCount && neutralAttempts < 500) {
+            // 固定の中立砦 (左上と右下)
+            // 左上: (margin, margin) 付近
+            let luX = margin, luY = margin;
+            let luAttempts = 0;
+            while (!isValidBaseLocation(luX, luY) && luAttempts < 50) {
+                luX += 16; luY += 16; luAttempts++;
+            }
+            this.bases.push(this.createBase('n-fort-lu', 'neutral', 2, false, luX, luY, 50));
+
+            // 右下: (size - margin, size - margin) 付近
+            let rdX = size - margin, rdY = size - margin;
+            let rdAttempts = 0;
+            while (!isValidBaseLocation(rdX, rdY) && rdAttempts < 50) {
+                rdX -= 16; rdY -= 16; rdAttempts++;
+            }
+            this.bases.push(this.createBase('n-fort-rd', 'neutral', 2, false, rdX, rdY, 50));
+
+            // 追加のランダムな中立砦 (0-2個)
+            const extraFortsCount = Math.floor(Math.random() * 3); // 0, 1, 2
+            let fortAttempts = 0;
+            while (this.bases.filter(b => b.owner === 'neutral' && b.rank === 2).length < 2 + extraFortsCount && fortAttempts < 200) {
+                fortAttempts++;
+                const x = margin + Math.random() * (size - margin * 2);
+                const y = margin + Math.random() * (size - margin * 2);
+                if (isValidBaseLocation(x, y)) {
+                    const id = `n-fort-${this.bases.length}`;
+                    this.bases.push(this.createBase(id, 'neutral', 2, false, x, y, 50));
+                }
+            }
+
+            // 中立集落 (8-14個)
+            const villageCount = Math.floor(Math.random() * 7) + 8; // 8 to 14
+            let neutralAttempts = 0;
+            while (this.bases.filter(b => b.owner === 'neutral' && b.rank === 1).length < villageCount && neutralAttempts < 500) {
                 neutralAttempts++
                 const x = margin + Math.random() * (size - margin * 2)
                 const y = margin + Math.random() * (size - margin * 2)
 
-                // Check terrain validity
+                // Check terrain validity and distance
                 if (!isValidBaseLocation(x, y)) continue
 
-                // Check distance from existing bases
-                const tooClose = this.bases.some(b => Math.hypot(b.x - x, b.y - y) < minDistance)
-                if (!tooClose) {
-                    const id = `n${this.bases.length - 1}`
-                    this.bases.push(this.createBase(id, 'neutral', 1, false, x, y))
-                }
+                const id = `n-vill-${this.bases.length}`
+                this.bases.push(this.createBase(id, 'neutral', 1, false, x, y))
             }
 
             // 4. Clear area around bases
@@ -739,14 +767,18 @@ export const useGameStore = defineStore('game', {
             })
         },
 
-        createBase(id: string, owner: Owner, rank: Rank, isCore: boolean, x: number, y: number): Base {
+        createBase(id: string, owner: Owner, rank: Rank, isCore: boolean, x: number, y: number, initialProduction?: number): Base {
             const config = RANK_CONFIG[rank]
+            let prod = initialProduction;
+            if (prod === undefined) {
+                prod = owner === 'neutral' ? 10 : 20;
+            }
             return {
                 id,
                 owner,
                 rank,
                 isCore,
-                production: owner === 'neutral' ? 10 : 20,
+                production: prod,
                 productionCap: config.cap,
                 growthRate: config.growth,
                 x,
@@ -994,9 +1026,15 @@ export const useGameStore = defineStore('game', {
                 target.production -= unit.power
                 if (target.production <= 0) {
                     const newProduction = Math.abs(target.production)
+                    const oldOwner = target.owner
                     target.owner = unit.owner
-                    target.rank = 1
-                    const config = RANK_CONFIG[1]
+
+                    // 中立拠点を占領した場合はランクを維持、敵拠点を占領した場合はランク1にリセット
+                    if (oldOwner !== 'neutral') {
+                        target.rank = 1
+                    }
+
+                    const config = RANK_CONFIG[target.rank]
                     target.production = newProduction
                     target.productionCap = config.cap
                     target.growthRate = config.growth
