@@ -260,6 +260,7 @@ export interface GameState {
     winner: Owner | null
     targetSelectThreshold: number
     cpuThinkingTimer: number
+    dayTime: number // 累計分（0〜1439）
     status: 'title' | 'playing' | 'gameover' | 'paused'
 }
 
@@ -273,6 +274,7 @@ export const useGameStore = defineStore('game', {
         winner: null,
         targetSelectThreshold: 40,
         cpuThinkingTimer: 0,
+        dayTime: 360, // 6:00 AM (6 * 60)
         status: 'title',
     }),
 
@@ -283,6 +285,7 @@ export const useGameStore = defineStore('game', {
             this.isGameOver = false
             this.winner = null
             this.cpuThinkingTimer = Math.random() * 1.0 + 0.5
+            this.dayTime = 360 // 毎回 am 6:00 からリセット
             this.status = 'playing'
 
             // Logical coordinate system: 0 to 800
@@ -780,6 +783,9 @@ export const useGameStore = defineStore('game', {
 
         update(deltaSeconds: number): void {
             if (this.status !== 'playing') return
+
+            // Update Game Time (TEST: 1 sec real time = 30 min game time)
+            this.dayTime = (this.dayTime + deltaSeconds * 30) % 1440
 
             // 1. Production & Easing
             for (const base of this.bases) {
