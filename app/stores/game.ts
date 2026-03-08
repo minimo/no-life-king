@@ -67,6 +67,7 @@ export interface Unit {
     isFighting?: boolean
     fightingTargetId?: string | null
     pursuitTargetId?: string | null
+    isStopped?: boolean
     rank: Rank
 }
 
@@ -680,9 +681,17 @@ export const useGameStore = defineStore('game', {
             const isValidBaseLocation = (wx: number, wy: number) => {
                 const gx = Math.round(wx / 16)
                 const gy = Math.round(wy / 16)
-                if (gy >= 0 && gy <= 50 && gx >= 0 && gx <= 50) {
-                    const tile = this.mapGrid[gy]![gx]
-                    if (tile === 1 || tile === 4) return false // Water or Bridge
+
+                // 周囲3x3マス（自分自身と周囲8マス）に水場(1)または橋(4)がないかチェック
+                for (let dy = -1; dy <= 1; dy++) {
+                    for (let dx = -1; dx <= 1; dx++) {
+                        const nx = gx + dx
+                        const ny = gy + dy
+                        if (ny >= 0 && ny <= 50 && nx >= 0 && nx <= 50) {
+                            const tile = this.mapGrid[ny]![nx]
+                            if (tile === 1 || tile === 4) return false // Water or Bridge is too close
+                        }
+                    }
                 }
                 // Check distance from existing bases
                 const tooClose = this.bases.some(b => Math.hypot(b.x - wx, b.y - wy) < minDistance)
@@ -823,16 +832,29 @@ export const useGameStore = defineStore('game', {
             })
         },
 
+        redirectUnit(unitId: string, targetId: string): void {
+            if (this.status !== 'playing') return
+
+            const unit = this.units.find(u => u.id === unitId)
+            const target = this.bases.find(b => b.id === targetId)
+            if (!unit || !target) return
+
+            // 元々の目的地と同じなら何もしない
+            if (unit.targetId === targetId && !unit.isStopped) return
+
+            unit.targetId = targetId
+            unit.isStopped = false
+            unit.path = findPath(this.mapGrid, unit.x, unit.y, target.x, target.y, unit.owner, unit.rank)
+            unit.pathIndex = 0
+            unit.elapsedTime = 0
+        },
+
         stopUnit(unitId: string): void {
-            const unitIndex = this.units.findIndex((u) => u.id === unitId)
-            if (unitIndex !== -1) {
-                const unit = this.units[unitIndex]!
-                // 派遣元の拠点がまだ自軍のものであれば、パワーの半分を拠点に還元する
-                const source = this.bases.find(b => b.id === unit.sourceId)
-                if (source && source.owner === unit.owner) {
-                    source.production = Math.min(source.productionCap, source.production + unit.power * 0.5)
-                }
-                this.units.splice(unitIndex, 1)
+            const unit = this.units.find((u) => u.id === unitId)
+            if (unit) {
+                unit.isStopped = true
+                unit.path = [{ x: unit.x, y: unit.y }]
+                unit.pathIndex = 0
             }
         },
 
@@ -942,7 +964,7 @@ export const useGameStore = defineStore('game', {
                         } else {
                             unit.pursuitTargetId = null
                         }
-                    } else {
+                    } else if (!unit.isStopped) {
                         // Regular movement: follow waypoints
                         const nextWP = unit.path[unit.pathIndex + 1]
                         if (nextWP) {
@@ -1013,8 +1035,8 @@ export const useGameStore = defineStore('game', {
                     continue
                 }
 
-                // 最終ウェイポイントに到達したら到着
-                if (unit.pathIndex >= unit.path.length - 1) {
+                // 最終ウェイポイントに到達したら到着（停止中はスキップ）
+                if (!unit.isStopped && unit.pathIndex >= unit.path.length - 1) {
                     this.resolveCombat(unit, target)
                     this.units.splice(i, 1)
                 } else {

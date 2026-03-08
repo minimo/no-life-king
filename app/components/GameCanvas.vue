@@ -782,6 +782,7 @@ onMounted(async () => {
 
           if (unit.owner === 'player') {
              pointerDownEntityId.value = `unit:${unit.id}`
+             draggingFromBaseId.value = `unit:${unit.id}`
              const clickX = e.clientX
              const clickY = e.clientY
              longPressTimeout = setTimeout(() => {
@@ -883,14 +884,25 @@ onMounted(async () => {
           })
         }
       } else if (draggingFromBaseId.value) {
-        const source = gameStore.bases.find((b: Base) => b.id === draggingFromBaseId.value)
+        const isFromUnit = draggingFromBaseId.value.startsWith('unit:')
+        let source: { x: number, y: number, rank: Rank } | null = null
+        
+        if (isFromUnit) {
+          const unitId = draggingFromBaseId.value.split(':')[1]
+          const unit = gameStore.units.find(u => u.id === unitId)
+          if (unit) source = { x: unit.x, y: unit.y, rank: unit.rank }
+        } else {
+          const base = gameStore.bases.find((b: Base) => b.id === draggingFromBaseId.value)
+          if (base) source = { x: base.x, y: base.y, rank: base.rank }
+        }
+
         if (source) {
           const target = targetedBaseId.value ? gameStore.bases.find((b: Base) => b.id === targetedBaseId.value) : null
           // Supress if source and target are same
-          if (!target || target.id !== source.id) {
+          if (!target || (draggingFromBaseId.value !== target.id)) {
             // mousePos is in screenspace, logical source.x/y is needed for consistency
             // renderArrow will handle the conversion
-            renderArrow(dragLine!, source, target || fromIso(mousePos.value.x, mousePos.value.y), true, !!target)
+            renderArrow(dragLine!, source, target || fromIso(mousePos.value.x, mousePos.value.y), !isFromUnit, !!target)
           }
         }
       }
@@ -1047,7 +1059,7 @@ onMounted(async () => {
     if (targetIsBase && sourceIsBase) {
       // A*パスを取得（プレイヤーの経路コストで計算）
       // source オブジェクトが Base 型なら rank を使い、そうでないなら Rank 1 とする
-      const sourceRank = (source as Base).rank || 1;
+      const sourceRank = (source as any).rank || 1;
       const pathPoints = gameStore.getPath(source.x, source.y, target.x, target.y, 'player', sourceRank)
 
       // パスをISO座標に変換
@@ -1329,7 +1341,7 @@ const handleGlobalPointerUp = async (e: PointerEvent) => {
       }
     })
     multiSendTargetId.value = null
-  } else if (draggingFromBaseId.value && !draggingFromBaseId.value.startsWith('unit:')) {
+  } else if (draggingFromBaseId.value) {
     let closestBase: any = null
     let minDist = Infinity
 
@@ -1342,11 +1354,14 @@ const handleGlobalPointerUp = async (e: PointerEvent) => {
     })
 
     if (closestBase && minDist <= gameStore.targetSelectThreshold) {
-      gameStore.sendUnits(draggingFromBaseId.value, closestBase.id)
+      if (draggingFromBaseId.value.startsWith('unit:')) {
+        const unitId = draggingFromBaseId.value.split(':')[1]!
+        gameStore.redirectUnit(unitId, closestBase.id)
+      } else {
+        gameStore.sendUnits(draggingFromBaseId.value, closestBase.id)
+      }
     }
 
-    draggingFromBaseId.value = null
-  } else if (draggingFromBaseId.value?.startsWith('unit:')) {
     draggingFromBaseId.value = null
   }
 }
@@ -1417,7 +1432,7 @@ onUnmounted(() => {
         
         <template v-if="contextMenu.type === 'unit'">
           <button class="context-menu-item" @click="handleContextMenuAction('stop')">
-            <span>停止 (ポイント回収)</span>
+            <span>待機</span>
           </button>
         </template>
       </div>
