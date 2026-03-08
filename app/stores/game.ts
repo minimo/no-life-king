@@ -67,6 +67,7 @@ export interface Unit {
     isFighting?: boolean
     fightingTargetId?: string | null
     pursuitTargetId?: string | null
+    rank: Rank
 }
 
 export const RANK_CONFIG = {
@@ -78,7 +79,7 @@ export const RANK_CONFIG = {
 const UNIT_SPEED = 30 // px/sec
 
 /** ユニット現在位置の地形タイルから速度倍率を返す */
-function getTerrainSpeedMultiplier(mapGrid: number[][], worldX: number, worldY: number, owner: Owner, bases: Base[]): number {
+function getTerrainSpeedMultiplier(mapGrid: number[][], worldX: number, worldY: number, owner: Owner, bases: Base[], rank: Rank): number {
     const gx = Math.round(worldX / 16)
     const gy = Math.round(worldY / 16)
     if (gy < 0 || gy > 50 || gx < 0 || gx > 50) return 1.0
@@ -100,7 +101,8 @@ function getTerrainSpeedMultiplier(mapGrid: number[][], worldX: number, worldY: 
 
     // 水
     if (tile === 1) {
-        mult = 0.0 // 侵入不可
+        if (rank === 3) mult = 0.5 // 金色ユニットは水上を0.5倍速で移動可能
+        else mult = 0.0 // 侵入不可
     }
     // 橋
     else if (tile === 4) { mult = 1.0 }
@@ -122,10 +124,14 @@ function getTerrainSpeedMultiplier(mapGrid: number[][], worldX: number, worldY: 
 }
 
 /** グリッドタイルの移動コストを返す（速度倍率の逆数）*/
-function getTileCost(mapGrid: number[][], gx: number, gy: number, owner: Owner): number {
+function getTileCost(mapGrid: number[][], gx: number, gy: number, owner: Owner, rank: Rank): number {
     if (gy < 0 || gy > 50 || gx < 0 || gx > 50) return 1.0
     const tile = mapGrid[gy]?.[gx] ?? 0
-    if (tile === 1) return Infinity // 水（侵入不可）
+    if (tile === 1) {
+        // 金色ユニット (Rank 3) は水を渡れる（コスト高め = 速度0.5倍）
+        if (rank === 3) return 2.0
+        return Infinity // 水（侵入不可）
+    }
     if (tile === 4) return 1.0 // 橋
     if (tile === 21 || tile === 22) return 2.0 // 低山
     if (tile === 23 || tile === 24) return 2.86 // 高山
@@ -135,7 +141,7 @@ function getTileCost(mapGrid: number[][], gx: number, gy: number, owner: Owner):
 }
 
 /** A*経路探索: グリッド座標で探索し、ワールド座標のウェイポイント配列を返す */
-function findPath(mapGrid: number[][], startWX: number, startWY: number, endWX: number, endWY: number, owner: Owner): { x: number; y: number }[] {
+function findPath(mapGrid: number[][], startWX: number, startWY: number, endWX: number, endWY: number, owner: Owner, rank: Rank): { x: number; y: number }[] {
     const sx = Math.round(startWX / 16)
     const sy = Math.round(startWY / 16)
     const ex = Math.round(endWX / 16)
@@ -226,7 +232,7 @@ function findPath(mapGrid: number[][], startWX: number, startWY: number, endWX: 
             const nk = key(nx, ny)
             if (closed.has(nk)) continue
 
-            const tileCost = getTileCost(mapGrid, nx, ny, owner)
+            const tileCost = getTileCost(mapGrid, nx, ny, owner, rank)
             const tentG = curG + baseDist * tileCost
 
             if (tentG < (gScore.get(nk) ?? Infinity)) {
@@ -800,7 +806,7 @@ export const useGameStore = defineStore('game', {
 
             source.production -= sendPower
 
-            const path = findPath(this.mapGrid, source.x, source.y, target.x, target.y, source.owner)
+            const path = findPath(this.mapGrid, source.x, source.y, target.x, target.y, source.owner, source.rank)
 
             this.units.push({
                 id: Math.random().toString(36).substr(2, 9),
@@ -813,6 +819,7 @@ export const useGameStore = defineStore('game', {
                 x: source.x,
                 y: source.y,
                 elapsedTime: 0,
+                rank: source.rank,
             })
         },
 
@@ -890,10 +897,10 @@ export const useGameStore = defineStore('game', {
                     if (target) {
                         // Rate: ~2.5s for power 10 -> ~4 power/sec. 
                         // But let's scale it so combat duration is roughly consistent.
-                        // Decrease by e.g. 5 power/sec or proportional?
-                        // User: "2-3秒かけて双方の攻撃力を減らしてください"
                         // Rate = Math.max(unit.power, target.power) / 2.5
-                        const rate = 10 // Fixed rate for simplicity, or we can use the max.
+                        // 金色ユニット (Rank 3) は攻撃力 1.1倍
+                        const attackMult = unit.rank === 3 ? 1.1 : 1.0
+                        const rate = 10 * attackMult
                         unit.power -= rate * deltaSeconds
                     } else {
                         // Target destroyed
@@ -925,10 +932,12 @@ export const useGameStore = defineStore('game', {
                             const dy = targetUnit.y - unit.y
                             const dist = Math.hypot(dx, dy)
                             if (dist > 2) {
-                                const pursuitSpeedMult = getTerrainSpeedMultiplier(this.mapGrid, unit.x, unit.y, unit.owner, this.bases)
+                                const pursuitSpeedMult = getTerrainSpeedMultiplier(this.mapGrid, unit.x, unit.y, unit.owner, this.bases, unit.rank)
                                 const pursuitTimeMult = getTimeSpeedMultiplier(unit.owner, this.dayTime)
-                                unit.x += (dx / dist) * UNIT_SPEED * pursuitSpeedMult * pursuitTimeMult * deltaSeconds
-                                unit.y += (dy / dist) * UNIT_SPEED * pursuitSpeedMult * pursuitTimeMult * deltaSeconds
+                                // 金色ユニット (Rank 3) は移動速度 1.1倍
+                                const rankSpeedMult = unit.rank === 3 ? 1.1 : 1.0
+                                unit.x += (dx / dist) * UNIT_SPEED * pursuitSpeedMult * pursuitTimeMult * rankSpeedMult * deltaSeconds
+                                unit.y += (dy / dist) * UNIT_SPEED * pursuitSpeedMult * pursuitTimeMult * rankSpeedMult * deltaSeconds
                             }
                         } else {
                             unit.pursuitTargetId = null
@@ -937,9 +946,11 @@ export const useGameStore = defineStore('game', {
                         // Regular movement: follow waypoints
                         const nextWP = unit.path[unit.pathIndex + 1]
                         if (nextWP) {
-                            const moveSpeedMult = getTerrainSpeedMultiplier(this.mapGrid, unit.x, unit.y, unit.owner, this.bases)
+                            const moveSpeedMult = getTerrainSpeedMultiplier(this.mapGrid, unit.x, unit.y, unit.owner, this.bases, unit.rank)
                             const moveTimeMult = getTimeSpeedMultiplier(unit.owner, this.dayTime)
-                            const speed = UNIT_SPEED * moveSpeedMult * moveTimeMult
+                            // 金色ユニット (Rank 3) は移動速度 1.1倍
+                            const rankSpeedMult = unit.rank === 3 ? 1.1 : 1.0
+                            const speed = UNIT_SPEED * moveSpeedMult * moveTimeMult * rankSpeedMult
                             const dx = nextWP.x - unit.x
                             const dy = nextWP.y - unit.y
                             const dist = Math.hypot(dx, dy)
@@ -981,7 +992,9 @@ export const useGameStore = defineStore('game', {
                         }
 
                         if (decayMultiplier > 0) {
-                            const decayRate = 1.0 // 1 power per second
+                            // 自然減衰率: 通常=1.0, 赤=1.1, 金=1.2
+                            const rankDecayRate = unit.rank === 2 ? 1.1 : (unit.rank === 3 ? 1.2 : 1.0)
+                            const decayRate = 1.0 * rankDecayRate // Base: 1 power per second
                             const timeDecay = getTimeDecayMultiplier(unit.owner, this.dayTime)
                             unit.power -= decayRate * decayMultiplier * timeDecay * deltaSeconds
                         }
@@ -1061,8 +1074,8 @@ export const useGameStore = defineStore('game', {
         },
 
         // A*経路探索のラッパー（GameCanvas.vueからプレビュー用に利用）
-        getPath(startWX: number, startWY: number, endWX: number, endWY: number, owner: Owner): { x: number; y: number }[] {
-            return findPath(this.mapGrid, startWX, startWY, endWX, endWY, owner)
+        getPath(startWX: number, startWY: number, endWX: number, endWY: number, owner: Owner, rank: Rank): { x: number; y: number }[] {
+            return findPath(this.mapGrid, startWX, startWY, endWX, endWY, owner, rank)
         },
 
         updateCPU(delta: number): void {
@@ -1130,7 +1143,7 @@ export const useGameStore = defineStore('game', {
 
             if (available >= required && available >= 1) {
                 // A*パスから移動時間を推定し、到着時の残り体力を見積もる
-                const path = findPath(this.mapGrid, source.x, source.y, target.x, target.y, 'cpu')
+                const path = findPath(this.mapGrid, source.x, source.y, target.x, target.y, 'cpu', source.rank)
                 let totalDist = 0
                 for (let i = 0; i < path.length - 1; i++) {
                     totalDist += Math.hypot(path[i + 1]!.x - path[i]!.x, path[i + 1]!.y - path[i]!.y)

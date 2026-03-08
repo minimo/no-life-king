@@ -200,12 +200,24 @@ onMounted(async () => {
 
   // Load Assets
   const playerSpritesheetPath = `/assets/Denzi071022-2.png?t=${Date.now()}`
+  const playerRedSpritesheetPath = `/assets/Denzi071022-2-red.png?t=${Date.now()}`
+  const playerGoldSpritesheetPath = `/assets/Denzi071022-2-gold.png?t=${Date.now()}`
   const cpuSpritesheetPath = `/assets/Denzi071027-6.png?t=${Date.now()}`
+  const cpuRedSpritesheetPath = `/assets/Denzi071027-6-red.png?t=${Date.now()}`
+  const cpuGoldSpritesheetPath = `/assets/Denzi071027-6-gold.png?t=${Date.now()}`
   const mapTilesetPath = `/assets/Denzi111023-1_processed_v3.png?t=${Date.now()}`
   
-  const [playerBaseTexture, cpuBaseTexture, mapTilesetTexture] = await Promise.all([
+  const [
+    playerBaseTexture, playerRedBaseTexture, playerGoldBaseTexture,
+    cpuBaseTexture, cpuRedBaseTexture, cpuGoldBaseTexture,
+    mapTilesetTexture
+  ] = await Promise.all([
     PIXI.Assets.load(playerSpritesheetPath),
+    PIXI.Assets.load(playerRedSpritesheetPath),
+    PIXI.Assets.load(playerGoldSpritesheetPath),
     PIXI.Assets.load(cpuSpritesheetPath),
+    PIXI.Assets.load(cpuRedSpritesheetPath),
+    PIXI.Assets.load(cpuGoldSpritesheetPath),
     PIXI.Assets.load(mapTilesetPath)
   ])
 
@@ -347,25 +359,57 @@ onMounted(async () => {
     return PIXI.Texture.from(canvas);
   }
 
-  // 各所有者ごとの村テクスチャを事前生成
+    // 各所有者ごとの村テクスチャを事前生成
   const villageNeutralTexture = createVillageTexture(baseRank1Texture, [0.7, 0.7, 0.7]); // 灰色
   const villagePlayerTexture = createVillageTexture(baseRank1Texture, [0.2, 0.6, 1.0]);  // 青色
   const villageCpuTexture = baseRank1Texture; // デフォルト（赤色）
 
-  const playerAnimations = {
-    idle: createFrames(playerBaseTexture, 80),
-    walkUp: createFrames(playerBaseTexture, 160),
-    walkDown: createFrames(playerBaseTexture, 224),
-    attackUp: createFrames(playerBaseTexture, 304),
-    attackDown: createFrames(playerBaseTexture, 368),
+  const playerAnimsByRank = {
+    1: {
+      idle: createFrames(playerBaseTexture, 80),
+      walkUp: createFrames(playerBaseTexture, 160),
+      walkDown: createFrames(playerBaseTexture, 224),
+      attackUp: createFrames(playerBaseTexture, 304),
+      attackDown: createFrames(playerBaseTexture, 368),
+    },
+    2: {
+      idle: createFrames(playerRedBaseTexture, 80),
+      walkUp: createFrames(playerRedBaseTexture, 160),
+      walkDown: createFrames(playerRedBaseTexture, 224),
+      attackUp: createFrames(playerRedBaseTexture, 304),
+      attackDown: createFrames(playerRedBaseTexture, 368),
+    },
+    3: {
+      idle: createFrames(playerGoldBaseTexture, 80),
+      walkUp: createFrames(playerGoldBaseTexture, 160),
+      walkDown: createFrames(playerGoldBaseTexture, 224),
+      attackUp: createFrames(playerGoldBaseTexture, 304),
+      attackDown: createFrames(playerGoldBaseTexture, 368),
+    }
   }
-
-  const cpuAnimations = {
-    idle: createFrames(cpuBaseTexture, 80),
-    walkUp: createFrames(cpuBaseTexture, 160),
-    walkDown: createFrames(cpuBaseTexture, 224),
-    attackUp: createFrames(cpuBaseTexture, 304),
-    attackDown: createFrames(cpuBaseTexture, 368),
+  
+  const cpuAnimsByRank = {
+    1: {
+      idle: createFrames(cpuBaseTexture, 80),
+      walkUp: createFrames(cpuBaseTexture, 160),
+      walkDown: createFrames(cpuBaseTexture, 224),
+      attackUp: createFrames(cpuBaseTexture, 304),
+      attackDown: createFrames(cpuBaseTexture, 368),
+    },
+    2: {
+      idle: createFrames(cpuRedBaseTexture, 80),
+      walkUp: createFrames(cpuRedBaseTexture, 160),
+      walkDown: createFrames(cpuRedBaseTexture, 224),
+      attackUp: createFrames(cpuRedBaseTexture, 304),
+      attackDown: createFrames(cpuRedBaseTexture, 368),
+    },
+    3: {
+      idle: createFrames(cpuGoldBaseTexture, 80),
+      walkUp: createFrames(cpuGoldBaseTexture, 160),
+      walkDown: createFrames(cpuGoldBaseTexture, 224),
+      attackUp: createFrames(cpuGoldBaseTexture, 304),
+      attackDown: createFrames(cpuGoldBaseTexture, 368),
+    }
   }
 
   // Layer Containers for rendering order
@@ -711,7 +755,8 @@ onMounted(async () => {
       if (!visuals) {
         const container = new PIXI.Container()
         const isPlayer = unit.owner === 'player'
-        const anims = isPlayer ? playerAnimations : cpuAnimations
+        const animsByRank = isPlayer ? playerAnimsByRank : cpuAnimsByRank
+        const anims = animsByRank[unit.rank]
         
         const sprite = new PIXI.AnimatedSprite(anims.walkDown)
         sprite.anchor.set(0.5, 0.8)
@@ -802,7 +847,8 @@ onMounted(async () => {
         sprite.tint = nightTint // 夜間tintをユニットスプライトに適用
         
         const isPlayer = unit.owner === 'player'
-        const anims = isPlayer ? playerAnimations : cpuAnimations
+        const animsByRank = isPlayer ? playerAnimsByRank : cpuAnimsByRank
+        const anims = animsByRank[unit.rank]
         
         let targetAnim: any
         if (unit.isFighting) {
@@ -1000,7 +1046,9 @@ onMounted(async () => {
     // ターゲットが拠点の場合はA*パスを使用、そうでない場合は直線
     if (targetIsBase && sourceIsBase) {
       // A*パスを取得（プレイヤーの経路コストで計算）
-      const pathPoints = gameStore.getPath(source.x, source.y, target.x, target.y, 'player')
+      // source オブジェクトが Base 型なら rank を使い、そうでないなら Rank 1 とする
+      const sourceRank = (source as Base).rank || 1;
+      const pathPoints = gameStore.getPath(source.x, source.y, target.x, target.y, 'player', sourceRank)
 
       // パスをISO座標に変換
       const isoPoints: { x: number; y: number }[] = pathPoints.map(p => toIso(p.x, p.y))
@@ -1077,7 +1125,8 @@ onMounted(async () => {
       g.fill({ color, alpha: 0.8 })
     } else {
       // ターゲットが拠点でない場合もA*パスで折れ線描画
-      const pathPoints = gameStore.getPath(source.x, source.y, target.x, target.y, 'player')
+      const sourceRank = (source as Base).rank || 1;
+      const pathPoints = gameStore.getPath(source.x, source.y, target.x, target.y, 'player', sourceRank)
       const isoPoints: { x: number; y: number }[] = pathPoints.map(p => toIso(p.x, p.y))
 
       if (isoPoints.length < 2) return
