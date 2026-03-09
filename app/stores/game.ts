@@ -297,6 +297,7 @@ export interface GameState {
     cpuThinkingTimer: number
     dayTime: number // 累計分（0〜1439）
     status: 'title' | 'playing' | 'gameover' | 'paused'
+    seed: string
 }
 
 export const useGameStore = defineStore('game', {
@@ -311,15 +312,53 @@ export const useGameStore = defineStore('game', {
         cpuThinkingTimer: 0,
         dayTime: 360, // 6:00 AM (6 * 60)
         status: 'title',
+        seed: '',
     }),
 
     actions: {
-        initGame(): void {
+        initGame(customSeed?: string): void {
+            if (customSeed) {
+                this.seed = customSeed
+            } else if (!this.seed) {
+                // Generate random 6-digit number string
+                this.seed = Math.floor(100000 + Math.random() * 900000).toString()
+            }
+
+            // Simple hash function for string to numeric seed
+            const hashString = (str: string) => {
+                let hash = 0
+                for (let i = 0; i < str.length; i++) {
+                    hash = (hash << 5) - hash + str.charCodeAt(i)
+                    hash |= 0
+                }
+                return hash
+            }
+
+            // Mulberry32 PRNG
+            const seedNum = hashString(this.seed)
+            const random = () => {
+                let t = (seedNum ^ (seedNum >>> 15)) * 0x85ebca6b
+                t = (t ^ (t >>> 13)) * 0xc2b2ae35
+                return ((t ^ (t >>> 16)) >>> 0) / 4294967296
+            }
+
+            // Better PRNG state management if needed, but for simplicity:
+            let s = seedNum
+            const mulberry32 = () => {
+                s |= 0; s = s + 0x6D2B79F5 | 0;
+                let t = Math.imul(s ^ s >>> 15, 1 | s);
+                t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+                return ((t ^ t >>> 14) >>> 0) / 4294967296;
+            }
+
+            // Use mulberry32 for all random calls in initGame
+            const rnd = mulberry32
+
             this.bases = []
             this.units = []
             this.isGameOver = false
             this.winner = null
-            this.cpuThinkingTimer = Math.random() * 1.0 + 0.5
+            this.cpuThinkingTimer = rnd() * 1.0 + 0.5
             this.dayTime = 360 // 毎回 am 6:00 からリセット
             this.status = 'playing'
 
@@ -329,8 +368,8 @@ export const useGameStore = defineStore('game', {
             const minDistance = 100
 
             // 1. Generate Map (51x51 logic grid for 800x800 area with step 16)
-            const noise2D_elev = createNoise2D()
-            const noise2D_moist = createNoise2D()
+            const noise2D_elev = createNoise2D(mulberry32)
+            const noise2D_moist = createNoise2D(mulberry32)
             this.mapGrid = Array(51).fill(0).map(() => Array(51).fill(0))
 
             for (let y = 0; y <= 50; y++) {
@@ -355,26 +394,26 @@ export const useGameStore = defineStore('game', {
             }
 
             // 2. Carve Rivers
-            const numRivers = 1 + Math.floor(Math.random() * 2) // 1 to 2
+            const numRivers = 1 + Math.floor(rnd() * 2) // 1 to 2
             const riverPoints: { x: number, y: number }[] = []
 
             for (let r = 0; r < numRivers; r++) {
-                const isHorizontal = Math.random() < 0.5
+                const isHorizontal = rnd() < 0.5
                 let startX: number, startY: number, endX: number, endY: number
 
                 if (isHorizontal) {
                     startX = 0
-                    startY = Math.floor(Math.random() * 40) + 5
+                    startY = Math.floor(rnd() * 40) + 5
                     endX = 50
-                    endY = Math.floor(Math.random() * 40) + 5
+                    endY = Math.floor(rnd() * 40) + 5
                 } else {
-                    startX = Math.floor(Math.random() * 40) + 5
+                    startX = Math.floor(rnd() * 40) + 5
                     startY = 0
-                    endX = Math.floor(Math.random() * 40) + 5
+                    endX = Math.floor(rnd() * 40) + 5
                     endY = 50
                 }
 
-                const riverNoise = createNoise2D()
+                const riverNoise = createNoise2D(mulberry32)
 
                 let lastNx = -1
                 let lastNy = -1
@@ -422,18 +461,18 @@ export const useGameStore = defineStore('game', {
                 carveRiverPath(startX, startY, endX, endY)
 
                 // Branching
-                if (Math.random() < 1 / 3) {
-                    const branchT = 0.3 + Math.random() * 0.4
+                if (rnd() < 1 / 3) {
+                    const branchT = 0.3 + rnd() * 0.4
                     const branchStartX = startX + (endX - startX) * branchT
                     const branchStartY = startY + (endY - startY) * branchT
                     let branchEndX: number, branchEndY: number
 
                     if (isHorizontal) {
-                        branchEndX = Math.max(0, Math.min(50, branchStartX + (Math.random() - 0.5) * 50))
-                        branchEndY = Math.random() < 0.5 ? 0 : 50
+                        branchEndX = Math.max(0, Math.min(50, branchStartX + (rnd() - 0.5) * 50))
+                        branchEndY = rnd() < 0.5 ? 0 : 50
                     } else {
-                        branchEndX = Math.random() < 0.5 ? 0 : 50
-                        branchEndY = Math.max(0, Math.min(50, branchStartY + (Math.random() - 0.5) * 50))
+                        branchEndX = rnd() < 0.5 ? 0 : 50
+                        branchEndY = Math.max(0, Math.min(50, branchStartY + (rnd() - 0.5) * 50))
                     }
                     carveRiverPath(branchStartX, branchStartY, branchEndX, branchEndY)
                 }
@@ -441,7 +480,7 @@ export const useGameStore = defineStore('game', {
 
             // 川が全て生成された後に橋をかける
             // Add 2 to 4 bridges per river system
-            const maxBridges = numRivers * (2 + Math.floor(Math.random() * 3)) // numRivers * (2 to 4)
+            const maxBridges = numRivers * (2 + Math.floor(rnd() * 3)) // numRivers * (2 to 4)
             for (let b = 0; b < maxBridges; b++) {
                 if (riverPoints.length === 0) break
 
@@ -449,7 +488,7 @@ export const useGameStore = defineStore('game', {
                 let validIdx = -1
                 let attempt = 0
                 while (attempt < 20) {
-                    const idx = Math.floor(Math.random() * riverPoints.length)
+                    const idx = Math.floor(rnd() * riverPoints.length)
                     const point = riverPoints[idx]
                     if (!point) {
                         attempt++
@@ -488,7 +527,7 @@ export const useGameStore = defineStore('game', {
                 }
 
                 // If no valid straight point found after attempts, just remove a random one to prevent infinite loops on tiny rivers
-                const failIdx = Math.floor(Math.random() * riverPoints.length)
+                const failIdx = Math.floor(rnd() * riverPoints.length)
                 riverPoints.splice(Math.max(0, failIdx - 8), 16)
             }
             // Assign variations for Mountains and Woods
@@ -520,13 +559,13 @@ export const useGameStore = defineStore('game', {
                         let variantOffset = 0
                         if (treeCount >= 6) {
                             // Deep forest: highly likely to be 34-35, sometimes 33
-                            variantOffset = 2 + Math.floor(Math.random() * 3) // 2, 3, 4 (maps to 33, 34, 35)
+                            variantOffset = 2 + Math.floor(rnd() * 3) // 2, 3, 4 (maps to 33, 34, 35)
                         } else if (treeCount >= 3) {
                             // Mid forest: mix of all, skewed middle
-                            variantOffset = 1 + Math.floor(Math.random() * 4) // 1, 2, 3, 4 (maps to 32, 33, 34, 35)
+                            variantOffset = 1 + Math.floor(rnd() * 4) // 1, 2, 3, 4 (maps to 32, 33, 34, 35)
                         } else {
                             // Edge of forest: likely to be 31-32, sometimes 33
-                            variantOffset = Math.floor(Math.random() * 3) // 0, 1, 2 (maps to 31, 32, 33)
+                            variantOffset = Math.floor(rnd() * 3) // 0, 1, 2 (maps to 31, 32, 33)
                         }
 
                         this.mapGrid[y]![x] = 31 + variantOffset
@@ -550,9 +589,9 @@ export const useGameStore = defineStore('game', {
                             }
                         }
                         if (isHigh) {
-                            this.mapGrid[y]![x] = 23 + Math.floor(Math.random() * 2) // 23, 24
+                            this.mapGrid[y]![x] = 23 + Math.floor(rnd() * 2) // 23, 24
                         } else {
-                            this.mapGrid[y]![x] = 21 + Math.floor(Math.random() * 2) // 21, 22
+                            this.mapGrid[y]![x] = 21 + Math.floor(rnd() * 2) // 21, 22
                         }
 
                     }
@@ -737,12 +776,12 @@ export const useGameStore = defineStore('game', {
             this.bases.push(this.createBase('n-fort-rd', 'neutral', 2, false, rdX, rdY, 50));
 
             // 追加のランダムな中立砦 (0-2個)
-            const extraFortsCount = Math.floor(Math.random() * 3); // 0, 1, 2
+            const extraFortsCount = Math.floor(rnd() * 3); // 0, 1, 2
             let fortAttempts = 0;
             while (this.bases.filter(b => b.owner === 'neutral' && b.rank === 2).length < 2 + extraFortsCount && fortAttempts < 200) {
                 fortAttempts++;
-                const x = margin + Math.random() * (size - margin * 2);
-                const y = margin + Math.random() * (size - margin * 2);
+                const x = margin + rnd() * (size - margin * 2);
+                const y = margin + rnd() * (size - margin * 2);
                 if (isValidBaseLocation(x, y)) {
                     const id = `n-fort-${this.bases.length}`;
                     this.bases.push(this.createBase(id, 'neutral', 2, false, x, y, 50));
@@ -750,12 +789,12 @@ export const useGameStore = defineStore('game', {
             }
 
             // 中立集落 (8-14個)
-            const villageCount = Math.floor(Math.random() * 7) + 8; // 8 to 14
+            const villageCount = Math.floor(rnd() * 7) + 8; // 8 to 14
             let neutralAttempts = 0;
             while (this.bases.filter(b => b.owner === 'neutral' && b.rank === 1).length < villageCount && neutralAttempts < 500) {
                 neutralAttempts++
-                const x = margin + Math.random() * (size - margin * 2)
-                const y = margin + Math.random() * (size - margin * 2)
+                const x = margin + rnd() * (size - margin * 2)
+                const y = margin + rnd() * (size - margin * 2)
 
                 // Check terrain validity and distance
                 if (!isValidBaseLocation(x, y)) continue
@@ -1209,9 +1248,9 @@ export const useGameStore = defineStore('game', {
             }
         },
 
-        startGame(): void {
+        startGame(seed?: string): void {
             this.status = 'playing'
-            this.initGame()
+            this.initGame(seed)
         },
 
         backToTitle(): void {

@@ -14,6 +14,10 @@ const gameStore = useGameStore()
     <template v-else>
       <header class="game-header">
         <TimeDisplay />
+        <div class="header-seed">
+          <span class="seed-label">SEED:</span>
+          <span class="seed-value">{{ gameStore.seed }}</span>
+        </div>
       </header>
 
       <main class="game-view">
@@ -24,18 +28,16 @@ const gameStore = useGameStore()
         <div class="controls">
           <div class="control-group">
             <label>Send Ratio: {{ Math.round(gameStore.sendRatio * 100) }}%</label>
-            <input 
-              type="range" 
-              min="0.1" 
-              max="0.9" 
-              step="0.1" 
-              v-model.number="gameStore.sendRatio"
-            />
-          </div>
-          <div class="info">
-            <span>Click & Drag to send units</span>
-            <span class="divider">|</span>
-            <span>Core bases define victory</span>
+            <div class="range-container">
+              <input 
+                type="range" 
+                min="0.1" 
+                max="0.9" 
+                step="0.1" 
+                v-model.number="gameStore.sendRatio"
+              />
+            </div>
+            <div class="spacer"></div>
           </div>
         </div>
       </footer>
@@ -80,6 +82,28 @@ body {
   text-transform: uppercase;
 }
 
+.header-seed {
+  position: absolute;
+  right: 2rem;
+  display: flex;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 0.4rem 1rem;
+  border-radius: 4px;
+  border: 1px solid rgba(165, 94, 234, 0.2);
+}
+
+.seed-label {
+  color: #888;
+  font-weight: bold;
+}
+
+.seed-value {
+  color: #a55eea;
+  font-family: monospace;
+}
+
 .game-view {
   flex: 1;
   position: relative;
@@ -102,19 +126,29 @@ body {
 }
 
 .control-group {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  gap: 1rem;
+  gap: 1.5rem;
   width: 100%;
 }
 
 .control-group label {
-  min-width: 150px;
+  justify-self: end;
   font-weight: bold;
+  font-size: 0.9rem;
+  color: #a55eea;
+  white-space: nowrap;
+}
+
+.range-container {
+  width: 400px;
+  display: flex;
+  justify-content: center;
 }
 
 input[type="range"] {
-  flex: 1;
+  width: 100%;
   cursor: pointer;
 }
 
