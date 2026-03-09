@@ -416,15 +416,15 @@ onMounted(async () => {
   const mapLayer = new PIXI.Container()
   const zoneLayer = new PIXI.Container()
   const highlightLayer = new PIXI.Container()
-  const baseLayer = new PIXI.Container()
-  const unitLayer = new PIXI.Container()
+  const mainLayer = new PIXI.Container() // Y-sorted layer for all tall objects
   const uiLayer = new PIXI.Container()
+
+  mainLayer.sortableChildren = true
 
   app.stage.addChild(mapLayer)
   app.stage.addChild(zoneLayer)
   app.stage.addChild(highlightLayer)
-  app.stage.addChild(baseLayer)
-  app.stage.addChild(unitLayer)
+  app.stage.addChild(mainLayer)
   app.stage.addChild(uiLayer)
 
   // Render Static Map
@@ -486,15 +486,18 @@ onMounted(async () => {
         tile.anchor.set(0.5, 0.75)
         // Since original logic scales grass by 1.08, let's scale tall sprites up slightly too
         tile.scale.set(1.5)
+        
+        tile.x = pos.x
+        tile.y = pos.y
+        tile.zIndex = pos.y // Set zIndex for Y-sorting in mainLayer
+        mainLayer.addChild(tile)
       } else {
         tile.anchor.set(0.5, 0.5)
         tile.scale.set(1.08) 
+        tile.x = pos.x
+        tile.y = pos.y
+        mapLayer.addChild(tile)
       }
-      
-      tile.x = pos.x
-      tile.y = pos.y
-      
-      mapLayer.addChild(tile)
     }
   }
 
@@ -646,12 +649,14 @@ onMounted(async () => {
         flag.name = 'flag'
         container.addChild(flag)
 
-        baseLayer.addChild(container)
+        mainLayer.addChild(container)
         visuals = { container, zone, highlight }
         baseVisuals.set(base.id, visuals)
       }
 
       const { container, zone, highlight } = visuals
+      const pos = toIso(base.x, base.y)
+      container.zIndex = pos.y // Important for Y-sorting with units and objects
       const sprite = container.getChildByName('sprite') as PIXI.Sprite
       const text = container.getChildByName('text') as PIXI.Text
       const flagSprite = container.getChildByName('flag') as PIXI.Sprite
@@ -809,7 +814,7 @@ onMounted(async () => {
         text.y = -38 // フォント拡大に合わせて位置を調整 (-35 -> -38)
         container.addChild(text)
         
-        unitLayer.addChild(container)
+        mainLayer.addChild(container)
         visuals = { container, sprite, text }
         unitVisuals.set(unit.id, visuals)
       }
@@ -818,7 +823,7 @@ onMounted(async () => {
       const pos = toIso(unit.x, unit.y)
       container.x = pos.x
       container.y = pos.y
-      container.zIndex = pos.y // Simple Y-sorting
+      container.zIndex = pos.y // Continuous Y-sorting
       text.text = Math.ceil(unit.power).toString()
       
       // 所有者のチームカラーに基づいて縁取りを更新
