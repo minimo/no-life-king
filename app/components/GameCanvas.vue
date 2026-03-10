@@ -161,9 +161,11 @@ function createFloatingText(text: string, x: number, y: number, color: number = 
 function createFrames(texture: PIXI.Texture, yOffset: number, count = 4) {
   const frames = []
   for (let i = 0; i < count; i++) {
+    // 素材に含まれるグリッド線（ガイド）の映り込みを避けるため、境界から1px内側を切り出す
+    // 64x64の領域に対して 62x62 でサンプリングする
     frames.push(new PIXI.Texture({
       source: texture.source,
-      frame: new PIXI.Rectangle(i * 64, yOffset, 64, 64)
+      frame: new PIXI.Rectangle(i * 64 + 1, yOffset + 1, 62, 62)
     }))
   }
   return frames
@@ -184,6 +186,7 @@ onMounted(async () => {
       backgroundColor: 0x1a1a1a,
       resolution: window.devicePixelRatio || 1,
       autoDensity: true,
+      roundPixels: true, // 描画のノイズ（テクスチャブリード）を抑制
     })
     console.log('Pixi initialized successfully')
   } catch (error) {
@@ -923,7 +926,7 @@ onMounted(async () => {
         const selVisuals = unitVisuals.get(selUnit.id)
 
         // 選択枠（楕円）
-        if (selVisuals) {
+        if (selVisuals && !selUnit.isFighting) {
           const uPos = toIso(selUnit.x, selUnit.y)
           unitPathGfx.setStrokeStyle({ width: 5, color: darkColor, alpha: 1.0 }) // 暗い縁
           unitPathGfx.ellipse(uPos.x, uPos.y + HIGHLIGHT_OFFSET_Y, 16, 12)
