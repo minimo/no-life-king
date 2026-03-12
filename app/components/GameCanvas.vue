@@ -5,7 +5,7 @@ import { useGameStore, RANK_CONFIG } from '~/stores/game'
 import type { Base, Unit, Owner, Rank } from '~/stores/game'
 
 // Constants
-const LOGICAL_SIZE = 800
+const LOGICAL_SIZE = 832
 const DOUBLE_CLICK_THRESHOLD = 300 // ms
 const LONG_PRESS_THRESHOLD = 500 // ms
 const SCALE_X = 2.0
@@ -197,7 +197,6 @@ onMounted(async () => {
   if (app && app.canvas) {
     app.canvas.style.width = '100%'
     app.canvas.style.height = '100%'
-    app.canvas.style.display = 'block'
     canvasRef.value.appendChild(app.canvas)
   }
 
@@ -213,7 +212,9 @@ onMounted(async () => {
   const [
     playerBaseTexture, playerRedBaseTexture, playerGoldBaseTexture,
     cpuBaseTexture, cpuRedBaseTexture, cpuGoldBaseTexture,
-    mapTilesetTexture
+    mapTilesetTexture,
+    skyTilesetTexture,
+    titleBgTexture
   ] = await Promise.all([
     PIXI.Assets.load(playerSpritesheetPath),
     PIXI.Assets.load(playerRedSpritesheetPath),
@@ -221,7 +222,9 @@ onMounted(async () => {
     PIXI.Assets.load(cpuSpritesheetPath),
     PIXI.Assets.load(cpuRedSpritesheetPath),
     PIXI.Assets.load(cpuGoldSpritesheetPath),
-    PIXI.Assets.load(mapTilesetPath)
+    PIXI.Assets.load(mapTilesetPath),
+    PIXI.Assets.load('/assets/Denzi100225-4.png'),
+    PIXI.Assets.load('/images/title_bg.png')
   ])
 
   // Map Tile Textures
@@ -421,6 +424,7 @@ onMounted(async () => {
   const highlightLayer = new PIXI.Container()
   const mainLayer = new PIXI.Container() // Y-sorted layer for all tall objects
   const uiLayer = new PIXI.Container()
+  const titleLayer = new PIXI.Container()
 
   mainLayer.sortableChildren = true
 
@@ -429,6 +433,258 @@ onMounted(async () => {
   app.stage.addChild(highlightLayer)
   app.stage.addChild(mainLayer)
   app.stage.addChild(uiLayer)
+  app.stage.addChild(titleLayer)
+  // --- Title Screen PIXI Implementation ---
+  const titleBg = new PIXI.Sprite(titleBgTexture)
+  titleBg.anchor.set(0.5)
+  titleBg.x = 1920 / 2
+  titleBg.y = 1080 / 2
+  
+  // Calculate base scale to cover 1920x1080 (maintain aspect ratio)
+  const baseScale = Math.max(1920 / titleBgTexture.width, 1080 / titleBgTexture.height)
+  titleBg.scale.set(baseScale)
+  
+  titleBg.tint = 0x999999
+  titleLayer.addChild(titleBg)
+
+  // Create Radial Vignette using Canvas (more reliable than FillGradient for complex shapes in v8)
+  const vignetteCanvas = document.createElement('canvas');
+  vignetteCanvas.width = 1024;
+  vignetteCanvas.height = 1024;
+  const ctx = vignetteCanvas.getContext('2d')!;
+  const grad = ctx.createRadialGradient(512, 512, 200, 512, 512, 512);
+  grad.addColorStop(0, 'rgba(0,0,0,0)');
+  grad.addColorStop(1, 'rgba(0,0,0,0.8)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 1024, 1024);
+  
+  const vignette = new PIXI.Sprite(PIXI.Texture.from(vignetteCanvas));
+  vignette.width = 1920;
+  vignette.height = 1080;
+  titleLayer.addChild(vignette);
+
+  const bloodOverlay = new PIXI.Graphics()
+    .rect(0, 0, 1920, 1080)
+    .fill({ color: 0x8b0000, alpha: 0.15 })
+  bloodOverlay.blendMode = 'multiply'
+  titleLayer.addChild(bloodOverlay)
+
+  // Title Text Gradient (Gothic Metal to Blood: White -> Silver -> Blood)
+  // We use local coordinates (0 to 120 for a 120px font)
+  const titleGradient = new PIXI.FillGradient(0, 0, 0, 120);
+  titleGradient.addColorStop(0, '#ffffff');    // Bone White (Top)
+  titleGradient.addColorStop(0.4, '#a0a0a0');  // Aged Silver (Middle)
+  titleGradient.addColorStop(0.7, '#eb3b5a');  // Cursed Crimson (Lower-mid)
+  titleGradient.addColorStop(1, '#4b0000');    // Dried Blood (Bottom)
+
+  // Glow Layer (Animated behind title)
+  const titleGlowText = new PIXI.Text({
+    text: 'NO LIFE KING',
+    style: {
+      fontFamily: 'Outfit',
+      fontSize: 120,
+      fill: 0xeb3b5a,
+      fontWeight: '900',
+      letterSpacing: 20,
+    }
+  })
+  titleGlowText.anchor.set(0.5)
+  titleGlowText.x = 1920 / 2
+  titleGlowText.y = 1080 / 2 - 150
+  titleGlowText.alpha = 0.4
+  titleLayer.addChild(titleGlowText)
+
+  const titleText = new PIXI.Text({
+    text: 'NO LIFE KING',
+    style: {
+      fontFamily: 'Outfit',
+      fontSize: 120,
+      fill: titleGradient,
+      fontWeight: '900',
+      letterSpacing: 20,
+      stroke: { color: '#000000', width: 6, join: 'round' },
+      dropShadow: { color: '#8b0000', alpha: 0.4, blur: 20, distance: 0 }
+    }
+  })
+  titleText.anchor.set(0.5, 0.0) // Top-center anchor to make gradient coordinates simpler
+  titleText.x = 1920 / 2
+  titleText.y = 1080 / 2 - 210 // Adjusted for new anchor
+  titleLayer.addChild(titleText)
+
+  const subtitleText = new PIXI.Text({
+    text: 'Awaken the Undead. Claim the Realm.',
+    style: {
+      fontFamily: 'Outfit',
+      fontSize: 24,
+      fill: 0xc0c0c0,
+      fontWeight: '300',
+      letterSpacing: 20, // Approx 0.8em
+      dropShadow: { color: 0x000000, alpha: 0.5, blur: 4, distance: 2 }
+    }
+  })
+  subtitleText.anchor.set(0.5)
+  subtitleText.x = 1920 / 2
+  subtitleText.y = 1080 / 2 - 50
+  titleLayer.addChild(subtitleText)
+
+  // Start Button
+  const startBtn = new PIXI.Container()
+  startBtn.x = 1920 / 2
+  startBtn.y = 1080 / 2 + 100
+  startBtn.eventMode = 'static'
+  startBtn.cursor = 'pointer'
+  titleLayer.addChild(startBtn)
+
+  // Start Button Gradient (90deg: #4b0000 -> #8b0000 -> #4b0000)
+  const btnGradient = new PIXI.FillGradient(-150, 0, 150, 0);
+  btnGradient.addColorStop(0, 0x4b0000);
+  btnGradient.addColorStop(0.5, 0x8b0000);
+  btnGradient.addColorStop(1, 0x4b0000);
+
+  const startBtnBg = new PIXI.Graphics()
+    .rect(-150, -30, 300, 60)
+    .fill(btnGradient)
+    .stroke({ color: 0xeb3b5a, width: 1, alpha: 0.8 })
+  startBtn.addChild(startBtnBg)
+
+  const startBtnText = new PIXI.Text({
+    text: '覚醒する',
+    style: {
+      fontFamily: 'Outfit',
+      fontSize: 28,
+      fill: 0xffffff,
+      fontWeight: 'bold',
+      letterSpacing: 5
+    }
+  })
+  startBtnText.anchor.set(0.5)
+  startBtn.addChild(startBtnText)
+
+  // Start Button Glow Streak (Gradient highlight passing through)
+  const streakContainer = new PIXI.Container()
+  const streakMask = new PIXI.Graphics()
+    .rect(-150, -30, 300, 60)
+    .fill(0xffffff)
+  streakContainer.mask = streakMask
+  startBtn.addChild(streakMask, streakContainer)
+
+  // Linear Gradient for the streak: Transparent -> Soft White -> Transparent
+  const streakGradient = new PIXI.FillGradient(-50, 0, 50, 0);
+  streakGradient.addColorStop(0, 'rgba(255, 255, 255, 0)');
+  streakGradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.3)');
+  streakGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+
+  const streakHighlight = new PIXI.Graphics()
+    .poly([-80, -60, 20, -60, 80, 60, -20, 60]) // Wider slanted shape
+    .fill(streakGradient)
+  streakHighlight.x = -400
+  streakContainer.addChild(streakHighlight)
+
+  let targetBtnScale = 1.0
+  let isHoveringStartBtn = false
+
+  startBtn.on('pointerover', () => {
+    targetBtnScale = 1.05
+    isHoveringStartBtn = true
+    streakHighlight.x = -400 // Reset and start streak position
+    startBtnBg.tint = 0xffffff
+  })
+  startBtn.on('pointerout', () => {
+    targetBtnScale = 1.0
+    isHoveringStartBtn = false
+    startBtnBg.tint = 0xcccccc
+  })
+
+  startBtn.on('pointerdown', () => {
+    titleLayer.visible = false
+    gameStore.startGame('')
+  })
+
+  // Seed Button
+  const seedBtn = new PIXI.Text({
+    text: '特定の運命（SEED）で開始',
+    style: {
+      fontFamily: 'Outfit',
+      fontSize: 16,
+      fill: 0x999999,
+      fontWeight: '600',
+      letterSpacing: 2
+    }
+  })
+  seedBtn.anchor.set(0.5)
+  seedBtn.x = 1920 / 2
+  seedBtn.y = 1080 / 2 + 180
+  seedBtn.eventMode = 'static'
+  seedBtn.cursor = 'pointer'
+  titleLayer.addChild(seedBtn)
+
+  seedBtn.on('pointerover', () => { seedBtn.style.fill = 0xeb3b5a })
+  seedBtn.on('pointerout', () => { seedBtn.style.fill = 0x999999 })
+
+  seedBtn.on('pointerdown', () => {
+    // For now, simple prompt until we have a PIXI modal
+    const input = window.prompt('SEEDを入力してください (6桁の数字)', '')
+    if (input !== null) {
+      titleLayer.visible = false
+      gameStore.startGame(input)
+    }
+  })
+
+  // Ember Particles
+  const embers: { sprite: PIXI.Graphics, speed: number, angle: number }[] = []
+  for (let i = 0; i < 40; i++) {
+    const ember = new PIXI.Graphics()
+      .circle(0, 0, Math.random() * 2 + 1)
+      .fill({ color: 0xeb3b5a, alpha: 0.8 })
+    
+    // Slight glow with alpha animation rather than complex filters for perf
+    ember.alpha = 0.5 + Math.random() * 0.5
+    ember.x = Math.random() * 1920
+    ember.y = 1080 + Math.random() * 100
+    titleLayer.addChild(ember)
+    embers.push({
+      sprite: ember,
+      speed: Math.random() * 2 + 1,
+      angle: (Math.random() - 0.5) * 0.2
+    })
+  }
+
+  // Info Grid (Bottom icons)
+  const infoItems = [
+    { icon: '💀', text: '不死の軍勢を率いよ' },
+    { icon: '🏰', text: 'かつての領土を奪還せよ' },
+    { icon: '🩸', text: '永遠の王として君臨せよ' }
+  ]
+  const infoContainer = new PIXI.Container()
+  infoContainer.y = 1080 - 150
+  titleLayer.addChild(infoContainer)
+
+  infoItems.forEach((item, i) => {
+    const itemCont = new PIXI.Container()
+    itemCont.x = (1920 / 4) * (i + 1)
+    
+    const icon = new PIXI.Text({
+        text: item.icon,
+        style: { fontSize: 40 }
+    })
+    icon.anchor.set(0.5)
+    
+    const txt = new PIXI.Text({
+        text: item.text,
+        style: {
+            fontFamily: 'Outfit',
+            fontSize: 18,
+            fill: 0x666666,
+            fontWeight: '600',
+            letterSpacing: 2
+        }
+    })
+    txt.anchor.set(0.5)
+    txt.y = 50
+    
+    itemCont.addChild(icon, txt)
+    infoContainer.addChild(itemCont)
+  })
 
   // Render Static Map
   const STEP = 16 // Logical step for tiling
@@ -515,6 +771,173 @@ onMounted(async () => {
   const unitVisuals = new Map<string, { container: PIXI.Container, sprite: PIXI.AnimatedSprite, text: PIXI.Text }>()
   uiLayer.addChild(effectLayer)
 
+  // --- TimeDisplay PIXI Integration ---
+  const timeDisplayContainer = new PIXI.Container()
+  timeDisplayContainer.sortableChildren = true
+  uiLayer.addChild(timeDisplayContainer)
+
+  // Position based on user preference (translated from 10% right, 3rem top)
+  // 1920 * 0.9 = 1728, 3rem is approx 48px
+  timeDisplayContainer.x = 1920 * 0.9 - 192 // Offset by width to align right edge
+  timeDisplayContainer.y = 48
+
+  const timeDisplayMask = new PIXI.Graphics()
+    .roundRect(0, 0, 192, 60, 4)
+    .fill(0xffffff)
+  timeDisplayContainer.mask = timeDisplayMask
+  timeDisplayContainer.addChild(timeDisplayMask)
+
+  const skyLayerA = new PIXI.Sprite(skyTilesetTexture)
+  const skyLayerB = new PIXI.Sprite(skyTilesetTexture)
+  skyLayerA.visible = false
+  skyLayerB.visible = false
+  timeDisplayContainer.addChild(skyLayerA, skyLayerB)
+
+  const sunSprite = new PIXI.Sprite(new PIXI.Texture({
+    source: skyTilesetTexture.source,
+    frame: new PIXI.Rectangle(0.5, 16.5, 31, 31)
+  }))
+  const moonSprite = new PIXI.Sprite(new PIXI.Texture({
+    source: skyTilesetTexture.source,
+    frame: new PIXI.Rectangle(32.5, 16.5, 31, 31)
+  }))
+  sunSprite.anchor.set(0.5)
+  moonSprite.anchor.set(0.5)
+  sunSprite.scale.set(1.4)
+  moonSprite.scale.set(1.4)
+  sunSprite.zIndex = 5
+  moonSprite.zIndex = 5
+  timeDisplayContainer.addChild(sunSprite, moonSprite)
+
+  const landSprite = new PIXI.Sprite(new PIXI.Texture({
+    source: skyTilesetTexture.source,
+    frame: new PIXI.Rectangle(1 * 96, 736 + 40, 96, 24)
+  }))
+  landSprite.width = 192
+  landSprite.height = 24
+  landSprite.y = 60 - 24 + 5
+  landSprite.alpha = 0.9
+  landSprite.zIndex = 6
+  timeDisplayContainer.addChild(landSprite)
+
+  function updateSkyLayer(sprite: PIXI.Sprite, hour: number) {
+    const elapsed = (hour - 6 + 24) % 24
+    const row = elapsed % 6
+    const col = Math.floor(elapsed / 6)
+    
+    // Original coordinates from Denzi100225-4.png
+    const origX = 192 + (col * 96)
+    const origY = (row * 80) + 23
+    const origW = 96
+    const origH = 41
+    
+    // Re-use or update texture to avoid excessive object creation? 
+    // For now, creating a new Texture object is simple but we must ensure it's correct.
+    sprite.texture = new PIXI.Texture({
+      source: skyTilesetTexture.source,
+      frame: new PIXI.Rectangle(origX, origY, origW, origH)
+    })
+    sprite.width = 192
+    sprite.height = 60
+    sprite.visible = true
+  }
+
+  function updateCelestialPosition(sprite: PIXI.Sprite, type: 'sun' | 'moon') {
+    const dt = gameStore.dayTime
+    const isSun = type === 'sun'
+    const startTime = isSun ? 360 : 1080
+    const angle = ((dt - startTime + 1440) % 1440) / 1440 * Math.PI * 2
+    
+    // 中心座標を 50% に設定
+    const x = 50 - Math.cos(angle) * 37.4
+    
+    // 太陽のみ南中位置（最高点）を 5px 下げる (振幅 42 -> 37)
+    const yAmplitude = isSun ? 37 : 42
+    const y = 55 - Math.sin(angle) * yAmplitude
+    
+    sprite.x = (x / 100) * 192
+    sprite.y = y
+  }
+
+  // --- SEED Display PIXI ---
+  const seedContainer = new PIXI.Container()
+  seedContainer.x = 24
+  seedContainer.y = 24
+  uiLayer.addChild(seedContainer)
+
+  const seedBg = new PIXI.Graphics()
+    .roundRect(0, 0, 160, 32, 4)
+    .fill({ color: 0x000000, alpha: 0.5 })
+    .stroke({ color: 0xa55eea, alpha: 0.3, width: 1 })
+  seedContainer.addChild(seedBg)
+
+  const seedText = new PIXI.Text({
+    text: `SEED: ${gameStore.seed}`,
+    style: {
+      fontFamily: 'monospace',
+      fontSize: 14,
+      fill: 0xa55eea,
+      fontWeight: 'bold'
+    }
+  })
+  seedText.x = 12
+  seedText.y = 6
+  seedContainer.addChild(seedText)
+
+  // --- SendRatio Slider PIXI ---
+  const sliderContainer = new PIXI.Container()
+  sliderContainer.x = 1920 / 2 - 200 // Center horizontally
+  sliderContainer.y = 1080 - 80     // Near bottom
+  uiLayer.addChild(sliderContainer)
+
+  const sliderLabel = new PIXI.Text({
+    text: `Send Ratio: ${Math.round(gameStore.sendRatio * 100)}%`,
+    style: {
+      fontFamily: 'Outfit',
+      fontSize: 18,
+      fill: 0xa55eea,
+      fontWeight: 'bold'
+    }
+  })
+  sliderLabel.x = 200 - sliderLabel.width / 2
+  sliderLabel.y = -30
+  sliderContainer.addChild(sliderLabel)
+
+  const trackWidth = 400
+  const sliderTrack = new PIXI.Graphics()
+    .roundRect(0, 0, trackWidth, 6, 3)
+    .fill(0x333333)
+  sliderContainer.addChild(sliderTrack)
+
+  const sliderHandle = new PIXI.Graphics()
+    .circle(0, 3, 10)
+    .fill(0xa55eea)
+    .stroke({ color: 0xffffff, width: 2 })
+  sliderHandle.eventMode = 'static'
+  sliderHandle.cursor = 'pointer'
+  sliderContainer.addChild(sliderHandle)
+
+  let isDraggingSlider = false
+  const updateSliderFromPos = (localX: number) => {
+    const ratio = Math.max(0.1, Math.min(0.9, localX / trackWidth))
+    // Round to 0.1 steps to match previous behavior
+    gameStore.sendRatio = Math.round(ratio * 10) / 10
+  }
+
+  sliderHandle.on('pointerdown', () => { isDraggingSlider = true })
+  
+  // Need to handle global move/up for slider too
+  const originalHandlePointerMove = (e: PointerEvent) => {
+    if (!isDraggingSlider || !app?.canvas) return
+    const rect = app.canvas.getBoundingClientRect()
+    const scaleX = 1920 / rect.width
+    const localX = (e.clientX - rect.left) * scaleX - sliderContainer.x
+    updateSliderFromPos(localX)
+  }
+  
+  window.addEventListener('pointermove', originalHandlePointerMove)
+  window.addEventListener('pointerup', () => { isDraggingSlider = false })
+
   // 夜間の暗さを計算する関数（0〜0.5）
   function getNightAlpha(dayTime: number): number {
     // 06:00〜17:00 (360〜1020): 昼（明るい）
@@ -541,12 +964,94 @@ onMounted(async () => {
 
   app.ticker.add((ticker) => {
     const deltaSeconds = ticker.deltaTime / 60
+    
+    if (gameStore.status === 'title') {
+      titleLayer.visible = true
+      mapLayer.visible = false
+      zoneLayer.visible = false
+      highlightLayer.visible = false
+      mainLayer.visible = false
+      uiLayer.visible = false
+
+      // Animate title glow
+      const glowScale = 1 + Math.sin(Date.now() * 0.001) * 0.02
+      titleGlowText.scale.set(glowScale)
+      titleGlowText.alpha = 0.3 + Math.sin(Date.now() * 0.001) * 0.1
+
+      // Animate background (multiply by base scale)
+      const animScale = 1 + Math.sin(Date.now() * 0.0002) * 0.03
+      titleBg.scale.set(baseScale * animScale)
+
+      // Animate embers
+      embers.forEach(e => {
+        e.sprite.y -= e.speed
+        e.sprite.x += Math.sin(Date.now() * 0.002 + e.sprite.y * 0.01) * 0.5
+        if (e.sprite.y < -20) {
+          e.sprite.y = 1080 + 20
+          e.sprite.x = Math.random() * 1920
+        }
+      })
+
+      // Update Start Button smooth scale
+      startBtn.scale.x += (targetBtnScale - startBtn.scale.x) * 0.1
+      startBtn.scale.y += (targetBtnScale - startBtn.scale.y) * 0.1
+
+      // Update Start Button Glow Streak (Once per hover)
+      if (isHoveringStartBtn && streakHighlight.x < 400) {
+        streakHighlight.x += 8 // Slower movement (was 15)
+      }
+
+      return // Don't run game logic if in title
+    }
+
+    titleLayer.visible = false
+    mapLayer.visible = true
+    zoneLayer.visible = true
+    highlightLayer.visible = true
+    mainLayer.visible = true
+    uiLayer.visible = true
+
     gameStore.update(deltaSeconds)
 
     // 夜間tintの計算（マップオブジェクトのみに適用、UIテキストは対象外）
     const nightTint = getNightTint(gameStore.dayTime)
     mapLayer.tint = nightTint
     zoneLayer.tint = nightTint
+
+    // Update PIXI-based TimeDisplay
+    const dt = gameStore.dayTime
+    const shifted = (dt + 45) % 1440
+    const hour = Math.floor(shifted / 60) % 24
+    const minutes = shifted % 60
+    const FADE_DURATION = 45
+
+    if (minutes < FADE_DURATION) {
+      const progress = minutes / FADE_DURATION
+      updateSkyLayer(skyLayerA, hour)
+      skyLayerA.zIndex = 1
+      skyLayerA.alpha = 1
+      
+      updateSkyLayer(skyLayerB, (hour - 1 + 24) % 24)
+      skyLayerB.zIndex = 2
+      skyLayerB.alpha = 1 - progress
+    } else {
+      updateSkyLayer(skyLayerA, hour)
+      skyLayerA.zIndex = 1
+      skyLayerA.alpha = 1
+      skyLayerB.visible = false
+    }
+    timeDisplayContainer.sortChildren()
+
+    updateCelestialPosition(sunSprite, 'sun')
+    updateCelestialPosition(moonSprite, 'moon')
+
+    // Update SEED (in case it changes, though usually static)
+    seedText.text = `SEED: ${gameStore.seed}`
+
+    // Update Slider
+    sliderLabel.text = `Send Ratio: ${Math.round(gameStore.sendRatio * 100)}%`
+    sliderLabel.x = 200 - sliderLabel.width / 2
+    sliderHandle.x = gameStore.sendRatio * trackWidth
     
     // Convert screen mouse pos to logical world pos for interaction
     const logicalMouse = fromIso(mousePos.value.x, mousePos.value.y)
@@ -1413,7 +1918,7 @@ onUnmounted(() => {
       <div class="modal">
         <h1>{{ gameStore.winner === 'player' ? 'Victory!' : 'Defeat...' }}</h1>
         <div class="modal-actions">
-          <button @click="gameStore.initGame">Restart</button>
+          <button @click="gameStore.startGame()">Restart</button>
           <button @click="gameStore.backToTitle" class="secondary">Back to Title</button>
         </div>
       </div>
@@ -1461,12 +1966,18 @@ onUnmounted(() => {
 }
 
 .canvas-wrapper {
-  width: 100%;
-  max-width: 1920px;
-  aspect-ratio: 1920 / 1080;
-  box-shadow: 0 0 50px rgba(0,0,0,0.5);
-  background: #111;
-  border: 1px solid #333;
+  width: min(100vw, calc(100vh * 16 / 9));
+  height: min(100vh, calc(100vw * 9 / 16));
+  background: #000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.canvas-wrapper canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
 }
 
 .overlay {
