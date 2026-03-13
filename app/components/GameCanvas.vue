@@ -854,7 +854,7 @@ onMounted(async () => {
 
   const landSprite = new PIXI.Sprite(new PIXI.Texture({
     source: skyTilesetTexture.source,
-    frame: new PIXI.Rectangle(1 * 96, 736 + 40, 96, 24)
+    frame: new PIXI.Rectangle(1 * 96 + 0.1, 736 + 40 + 0.1, 96 - 0.2, 24 - 0.2)
   }))
   landSprite.width = 192
   landSprite.height = 24
@@ -878,7 +878,7 @@ onMounted(async () => {
     // For now, creating a new Texture object is simple but we must ensure it's correct.
     sprite.texture = new PIXI.Texture({
       source: skyTilesetTexture.source,
-      frame: new PIXI.Rectangle(origX, origY, origW, origH)
+      frame: new PIXI.Rectangle(origX + 0.1, origY + 0.1, origW - 0.2, origH - 0.2)
     })
     sprite.width = 192
     sprite.height = 60
