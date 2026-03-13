@@ -83,7 +83,7 @@ const UNIT_SPEED = 30 // px/sec
 function getTerrainSpeedMultiplier(mapGrid: number[][], worldX: number, worldY: number, owner: Owner, bases: Base[], rank: Rank): number {
     const gx = Math.round(worldX / 16)
     const gy = Math.round(worldY / 16)
-    if (gy < 0 || gy > 50 || gx < 0 || gx > 50) return 1.0
+    if (gy < 0 || gy > 52 || gx < 0 || gx > 52) return 1.0
     const tile = mapGrid[gy]?.[gx] ?? 0
 
     // 砦の影響範囲内か判定
@@ -126,7 +126,7 @@ function getTerrainSpeedMultiplier(mapGrid: number[][], worldX: number, worldY: 
 
 /** グリッドタイルの移動コストを返す（速度倍率の逆数）*/
 function getTileCost(mapGrid: number[][], gx: number, gy: number, owner: Owner, rank: Rank): number {
-    if (gy < 0 || gy > 50 || gx < 0 || gx > 50) return 1.0
+    if (gy < 0 || gy > 52 || gx < 0 || gx > 52) return 1.0
     const tile = mapGrid[gy]?.[gx] ?? 0
     if (tile === 1) {
         // 金色ユニット (Rank 3) は水を渡れる（コスト高め = 速度0.5倍）
@@ -149,7 +149,7 @@ function findPath(mapGrid: number[][], startWX: number, startWY: number, endWX: 
     const ey = Math.round(endWY / 16)
 
     // グリッド範囲外なら直線パス
-    if (sx < 0 || sx > 50 || sy < 0 || sy > 50 || ex < 0 || ex > 50 || ey < 0 || ey > 50) {
+    if (sx < 0 || sx > 52 || sy < 0 || sy > 52 || ex < 0 || ex > 52 || ey < 0 || ey > 52) {
         return [{ x: startWX, y: startWY }, { x: endWX, y: endWY }]
     }
 
@@ -229,7 +229,7 @@ function findPath(mapGrid: number[][], startWX: number, startWY: number, endWX: 
         for (const [ddx, ddy, baseDist] of DIRS) {
             const nx = cx + ddx
             const ny = cy + ddy
-            if (nx < 0 || nx > 50 || ny < 0 || ny > 50) continue
+            if (nx < 0 || nx > 52 || ny < 0 || ny > 52) continue
             const nk = key(nx, ny)
             if (closed.has(nk)) continue
 
@@ -360,22 +360,21 @@ export const useGameStore = defineStore('game', {
             this.winner = null
             this.cpuThinkingTimer = rnd() * 1.0 + 0.5
             this.dayTime = 360 // 毎回 am 6:00 からリセット
-            this.status = 'playing'
 
-            // Logical coordinate system: 0 to 800
-            const size = 800
+            // Logical coordinate system: 0 to 832 (52 * 16)
+            const size = 832
             const margin = 100
             const minDistance = 100
 
             // 1. Generate Map (51x51 logic grid for 800x800 area with step 16)
             const noise2D_elev = createNoise2D(mulberry32)
             const noise2D_moist = createNoise2D(mulberry32)
-            this.mapGrid = Array(51).fill(0).map(() => Array(51).fill(0))
+            this.mapGrid = Array(53).fill(0).map(() => Array(53).fill(0))
 
-            for (let y = 0; y <= 50; y++) {
-                for (let x = 0; x <= 50; x++) {
-                    const nx = x / 50 - 0.5
-                    const ny = y / 50 - 0.5
+            for (let y = 0; y <= 52; y++) {
+                for (let x = 0; x <= 52; x++) {
+                    const nx = x / 52 - 0.5
+                    const ny = y / 52 - 0.5
                     // FBM (Fractal Brownian Motion)
                     let e = noise2D_elev(nx * 3, ny * 3) + 0.5 * noise2D_elev(nx * 6, ny * 6)
                     e = e / 1.5 // normalize
@@ -403,14 +402,14 @@ export const useGameStore = defineStore('game', {
 
                 if (isHorizontal) {
                     startX = 0
-                    startY = Math.floor(rnd() * 40) + 5
-                    endX = 50
-                    endY = Math.floor(rnd() * 40) + 5
+                    startY = Math.floor(rnd() * 42) + 5
+                    endX = 52
+                    endY = Math.floor(rnd() * 42) + 5
                 } else {
-                    startX = Math.floor(rnd() * 40) + 5
+                    startX = Math.floor(rnd() * 42) + 5
                     startY = 0
-                    endX = Math.floor(rnd() * 40) + 5
-                    endY = 50
+                    endX = Math.floor(rnd() * 42) + 5
+                    endY = 52
                 }
 
                 const riverNoise = createNoise2D(mulberry32)
@@ -421,7 +420,7 @@ export const useGameStore = defineStore('game', {
                 const recordPoint = (nx: number, ny: number) => {
                     if (this.mapGrid[ny] && this.mapGrid[ny]![nx] !== undefined) {
                         this.mapGrid[ny]![nx] = 1 // Water
-                        if (nx >= 2 && nx <= 48 && ny >= 2 && ny <= 48) {
+                        if (nx >= 2 && nx <= 50 && ny >= 2 && ny <= 50) {
                             if (!riverPoints.find(p => p.x === nx && p.y === ny)) {
                                 riverPoints.push({ x: nx, y: ny })
                             }
@@ -468,11 +467,11 @@ export const useGameStore = defineStore('game', {
                     let branchEndX: number, branchEndY: number
 
                     if (isHorizontal) {
-                        branchEndX = Math.max(0, Math.min(50, branchStartX + (rnd() - 0.5) * 50))
-                        branchEndY = rnd() < 0.5 ? 0 : 50
+                        branchEndX = Math.max(0, Math.min(52, branchStartX + (rnd() - 0.5) * 52))
+                        branchEndY = rnd() < 0.5 ? 0 : 52
                     } else {
-                        branchEndX = rnd() < 0.5 ? 0 : 50
-                        branchEndY = Math.max(0, Math.min(50, branchStartY + (rnd() - 0.5) * 50))
+                        branchEndX = rnd() < 0.5 ? 0 : 52
+                        branchEndY = Math.max(0, Math.min(52, branchStartY + (rnd() - 0.5) * 52))
                     }
                     carveRiverPath(branchStartX, branchStartY, branchEndX, branchEndY)
                 }
@@ -532,8 +531,8 @@ export const useGameStore = defineStore('game', {
             }
             // Assign variations for Mountains and Woods
             let waterCount = 0
-            for (let y = 0; y <= 50; y++) {
-                for (let x = 0; x <= 50; x++) {
+            for (let y = 0; y <= 52; y++) {
+                for (let x = 0; x <= 52; x++) {
                     if (this.mapGrid[y] && this.mapGrid[y]![x] === 1) waterCount++
                     if (this.mapGrid[y] && this.mapGrid[y]![x] === 3) {
                         // Calculate tree density based on surrounding tiles
@@ -543,7 +542,7 @@ export const useGameStore = defineStore('game', {
                                 if (dx === 0 && dy === 0) continue
                                 const nx = x + dx
                                 const ny = y + dy
-                                if (nx >= 0 && nx <= 50 && ny >= 0 && ny <= 50) {
+                                if (nx >= 0 && nx <= 52 && ny >= 0 && ny <= 52) {
                                     const neighborId = this.mapGrid[ny]?.[nx]
                                     // Count as a tree if it's 3, or if it's already assigned a variant 31-39
                                     if (neighborId === 3 || (neighborId !== undefined && Math.floor(neighborId / 10) === 3)) {
@@ -576,7 +575,7 @@ export const useGameStore = defineStore('game', {
                         for (const [dx, dy] of dirs) {
                             const nx = x + dx
                             const ny = y + dy
-                            if (nx >= 0 && nx <= 50 && ny >= 0 && ny <= 50) {
+                            if (nx >= 0 && nx <= 52 && ny >= 0 && ny <= 52) {
                                 // If any neighbour is NOT a mountain, it's not surrounded
                                 const neighborId = this.mapGrid[ny]?.[nx]
                                 if (neighborId !== undefined && neighborId !== 2 && Math.floor(neighborId / 10) !== 2) {
@@ -604,11 +603,11 @@ export const useGameStore = defineStore('game', {
             while (!landsConnected && landConnectAttempts < 10) {
                 landConnectAttempts++;
                 const visitedGrid = new Set<number>();
-                const key = (x: number, y: number) => y * 51 + x;
+                const key = (x: number, y: number) => y * 53 + x;
                 const landGroups: { x: number, y: number }[][] = [];
 
-                for (let y = 0; y <= 50; y++) {
-                    for (let x = 0; x <= 50; x++) {
+                for (let y = 0; y <= 52; y++) {
+                    for (let x = 0; x <= 52; x++) {
                         const tile = this.mapGrid[y]?.[x] ?? 0;
                         if (tile !== 1 && !visitedGrid.has(key(x, y))) {
                             const group: { x: number, y: number }[] = [];
@@ -624,7 +623,7 @@ export const useGameStore = defineStore('game', {
                                 for (const [dx, dy] of DIRS) {
                                     const nx = cur.x + dx;
                                     const ny = cur.y + dy;
-                                    if (nx >= 0 && nx <= 50 && ny >= 0 && ny <= 50) {
+                                    if (nx >= 0 && nx <= 52 && ny >= 0 && ny <= 52) {
                                         const nTile = this.mapGrid[ny]?.[nx] ?? 0;
                                         if (nTile !== 1) {
                                             const nk = key(nx, ny);
@@ -654,7 +653,7 @@ export const useGameStore = defineStore('game', {
                             for (const [dx, dy] of DIRS) {
                                 const nx = p.x + dx;
                                 const ny = p.y + dy;
-                                if (nx >= 0 && nx <= 50 && ny >= 0 && ny <= 50) {
+                                if (nx >= 0 && nx <= 52 && ny >= 0 && ny <= 52) {
                                     if (this.mapGrid[ny]?.[nx] === 1) return true;
                                 }
                             }
@@ -694,7 +693,7 @@ export const useGameStore = defineStore('game', {
                         let err = dx - dy;
 
                         while (true) {
-                            if (x0 >= 0 && x0 <= 50 && y0 >= 0 && y0 <= 50) {
+                            if (x0 >= 0 && x0 <= 52 && y0 >= 0 && y0 <= 52) {
                                 if (this.mapGrid[y0]?.[x0] === 1) {
                                     this.mapGrid[y0]![x0] = 4; // 橋を追加
                                 }
@@ -726,7 +725,7 @@ export const useGameStore = defineStore('game', {
                     for (let dx = -1; dx <= 1; dx++) {
                         const nx = gx + dx
                         const ny = gy + dy
-                        if (ny >= 0 && ny <= 50 && nx >= 0 && nx <= 50) {
+                        if (ny >= 0 && ny <= 52 && nx >= 0 && nx <= 52) {
                             const tile = this.mapGrid[ny]![nx]
                             if (tile === 1 || tile === 4) return false // Water or Bridge is too close
                         }
@@ -753,10 +752,10 @@ export const useGameStore = defineStore('game', {
             }
 
             // Player Core (Bottom-Left map corner)
-            placeCore('p-core', 'player', margin, size - margin, 16, -16)
+            placeCore('p-core', 'player', 48, size - 48, 16, -16)
 
             // CPU Core (Top-Right map corner)
-            placeCore('c-core', 'cpu', size - margin, margin, -16, 16)
+            placeCore('c-core', 'cpu', size - 48, 48, -16, 16)
 
             // 固定の中立砦 (左上と右下)
             // 左上: (margin, margin) 付近
@@ -811,7 +810,7 @@ export const useGameStore = defineStore('game', {
                     for (let dx = -2; dx <= 2; dx++) {
                         const ny = gridY + dy
                         const nx = gridX + dx
-                        if (ny >= 0 && ny <= 50 && nx >= 0 && nx <= 50) {
+                        if (ny >= 0 && ny <= 52 && nx >= 0 && nx <= 52) {
                             if (this.mapGrid[ny]![nx] !== 1 && this.mapGrid[ny]![nx] !== 4) { // Do not erase rivers or bridges
                                 this.mapGrid[ny]![nx] = 0 // Grass
                             }

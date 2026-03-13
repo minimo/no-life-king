@@ -9,39 +9,9 @@ const gameStore = useGameStore()
 
 <template>
   <div class="app-container">
-    <TitleScreen v-if="gameStore.status === 'title'" />
-    
-    <template v-else>
-      <header class="game-header">
-        <TimeDisplay />
-        <div class="header-seed">
-          <span class="seed-label">SEED:</span>
-          <span class="seed-value">{{ gameStore.seed }}</span>
-        </div>
-      </header>
-
-      <main class="game-view">
-        <GameCanvas />
-      </main>
-
-      <footer class="game-footer">
-        <div class="controls">
-          <div class="control-group">
-            <label>Send Ratio: {{ Math.round(gameStore.sendRatio * 100) }}%</label>
-            <div class="range-container">
-              <input 
-                type="range" 
-                min="0.1" 
-                max="0.9" 
-                step="0.1" 
-                v-model.number="gameStore.sendRatio"
-              />
-            </div>
-            <div class="spacer"></div>
-          </div>
-        </div>
-      </footer>
-    </template>
+    <main class="game-view">
+      <GameCanvas />
+    </main>
   </div>
 </template>
 
@@ -63,103 +33,11 @@ body {
   width: 100vw;
 }
 
-.game-header {
-  height: 64px;
-  padding: 2px;
-  box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(180deg, #1a1a1a 0%, #121212 100%);
-  border-bottom: 1px solid #333;
-}
-
-.game-header h1 {
-  margin: 0;
-  font-size: 1.5rem;
-  letter-spacing: 0.1em;
-  color: #3498db;
-  text-transform: uppercase;
-}
-
-.header-seed {
-  position: absolute;
-  right: 2rem;
-  display: flex;
-  gap: 0.5rem;
-  font-size: 0.8rem;
-  background: rgba(0, 0, 0, 0.3);
-  padding: 0.4rem 1rem;
-  border-radius: 4px;
-  border: 1px solid rgba(165, 94, 234, 0.2);
-}
-
-.seed-label {
-  color: #888;
-  font-weight: bold;
-}
-
-.seed-value {
-  color: #a55eea;
-  font-family: monospace;
-}
-
 .game-view {
   flex: 1;
   position: relative;
   overflow: hidden;
-}
-
-.game-footer {
-  padding: 1rem;
-  background: #1a1a1a;
-  border-top: 1px solid #333;
-}
-
-.controls {
-  max-width: 800px;
-  margin: 0 auto;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1rem;
-}
-
-.control-group {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: center;
-  gap: 1.5rem;
-  width: 100%;
-}
-
-.control-group label {
-  justify-self: end;
-  font-weight: bold;
-  font-size: 0.9rem;
-  color: #a55eea;
-  white-space: nowrap;
-}
-
-.range-container {
-  width: 400px;
-  display: flex;
-  justify-content: center;
-}
-
-input[type="range"] {
-  width: 100%;
-  cursor: pointer;
-}
-
-.info {
-  font-size: 0.9rem;
-  color: #888;
-  display: flex;
-  gap: 1rem;
-}
-
-.divider {
-  color: #444;
+  width: 100vw;
+  height: 100vh;
 }
 </style>

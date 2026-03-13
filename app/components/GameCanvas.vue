@@ -214,7 +214,8 @@ onMounted(async () => {
     cpuBaseTexture, cpuRedBaseTexture, cpuGoldBaseTexture,
     mapTilesetTexture,
     skyTilesetTexture,
-    titleBgTexture
+    titleBgTexture,
+    reliefTexture
   ] = await Promise.all([
     PIXI.Assets.load(playerSpritesheetPath),
     PIXI.Assets.load(playerRedSpritesheetPath),
@@ -224,8 +225,12 @@ onMounted(async () => {
     PIXI.Assets.load(cpuGoldSpritesheetPath),
     PIXI.Assets.load(mapTilesetPath),
     PIXI.Assets.load('/assets/Denzi100225-4.png'),
-    PIXI.Assets.load('/images/title_bg.png')
+    PIXI.Assets.load('/images/title_bg.png'),
+    PIXI.Assets.load('/assets/timedisplay_relief.png')
   ])
+
+  // レリーフの透過処理を実行
+  const processedReliefTexture = createTransparentTexture(reliefTexture)
 
   // Map Tile Textures
   // Grass tile: base grid is 32x16, let's use 0,0 but precise offset 16,16
@@ -359,6 +364,35 @@ onMounted(async () => {
         data[i] = targetRGB[0] * r * 255;
         data[i+1] = targetRGB[1] * r * 255;
         data[i+2] = targetRGB[2] * r * 255;
+      }
+    }
+    ctx.putImageData(imageData, 0, 0);
+    return PIXI.Texture.from(canvas);
+  }
+
+  // 黒背景を除去して透過テクスチャを生成する関数
+  function createTransparentTexture(sourceTexture: PIXI.Texture, tolerance = 40) {
+    const source = sourceTexture.source;
+    if (!source.resource) return sourceTexture;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = source.width;
+    canvas.height = source.height;
+    const ctx = canvas.getContext('2d')!;
+    
+    // HTMLImageElement として描画
+    ctx.drawImage(source.resource as any, 0, 0);
+    
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+    
+    for (let i = 0; i < data.length; i += 4) {
+      // 純粋な黒 (0,0,0) 付近だけでなく、暗い色も完全に透明にする
+      const r = data[i]!;
+      const g = data[i+1]!;
+      const b = data[i+2]!;
+      if (r < tolerance && g < tolerance && b < tolerance) {
+        data[i+3] = 0; // 透明化
       }
     }
     ctx.putImageData(imageData, 0, 0);
@@ -777,21 +811,30 @@ onMounted(async () => {
   uiLayer.addChild(timeDisplayContainer)
 
   // Position based on user preference (translated from 10% right, 3rem top)
-  // 1920 * 0.9 = 1728, 3rem is approx 48px
   timeDisplayContainer.x = 1920 * 0.9 - 192 // Offset by width to align right edge
   timeDisplayContainer.y = 48
 
-  const timeDisplayMask = new PIXI.Graphics()
-    .roundRect(0, 0, 192, 60, 4)
-    .fill(0xffffff)
-  timeDisplayContainer.mask = timeDisplayMask
-  timeDisplayContainer.addChild(timeDisplayMask)
+  // 楕円のアーチ型マスク（削除要請によりマスク解除）
+  const timeDisplayContent = new PIXI.Container()
+  timeDisplayContainer.addChild(timeDisplayContent)
+
+  // 石造りの装飾フレーム (指示に従い均等縮小してフィッティング)
+  const timeDisplayFrame = new PIXI.Sprite(processedReliefTexture)
+  
+  // 縦横比を維持（均等に縮小）して表示
+  timeDisplayFrame.anchor.set(0.5, 0.76)
+  timeDisplayFrame.x = 96
+  timeDisplayFrame.y = 90 // 下方にオフセット
+  timeDisplayFrame.scale.set(0.32)
+  
+  timeDisplayFrame.zIndex = 10
+  timeDisplayContainer.addChild(timeDisplayFrame)
 
   const skyLayerA = new PIXI.Sprite(skyTilesetTexture)
   const skyLayerB = new PIXI.Sprite(skyTilesetTexture)
   skyLayerA.visible = false
   skyLayerB.visible = false
-  timeDisplayContainer.addChild(skyLayerA, skyLayerB)
+  timeDisplayContent.addChild(skyLayerA, skyLayerB)
 
   const sunSprite = new PIXI.Sprite(new PIXI.Texture({
     source: skyTilesetTexture.source,
@@ -807,7 +850,7 @@ onMounted(async () => {
   moonSprite.scale.set(1.4)
   sunSprite.zIndex = 5
   moonSprite.zIndex = 5
-  timeDisplayContainer.addChild(sunSprite, moonSprite)
+  timeDisplayContent.addChild(sunSprite, moonSprite)
 
   const landSprite = new PIXI.Sprite(new PIXI.Texture({
     source: skyTilesetTexture.source,
@@ -815,10 +858,10 @@ onMounted(async () => {
   }))
   landSprite.width = 192
   landSprite.height = 24
-  landSprite.y = 60 - 24 + 5
+  landSprite.y = 60 - 24 + 4
   landSprite.alpha = 0.9
   landSprite.zIndex = 6
-  timeDisplayContainer.addChild(landSprite)
+  timeDisplayContent.addChild(landSprite)
 
   function updateSkyLayer(sprite: PIXI.Sprite, hour: number) {
     const elapsed = (hour - 6 + 24) % 24
@@ -848,12 +891,13 @@ onMounted(async () => {
     const startTime = isSun ? 360 : 1080
     const angle = ((dt - startTime + 1440) % 1440) / 1440 * Math.PI * 2
     
-    // 中心座標を 50% に設定
-    const x = 50 - Math.cos(angle) * 37.4
+    // 楕円のアーチに合わせたX座標の計算 (中心50%, 振幅をさらに中心寄りに調整)
+    const x = 50 - Math.cos(angle) * 30
     
-    // 太陽のみ南中位置（最高点）を 5px 下げる (振幅 42 -> 37)
-    const yAmplitude = isSun ? 37 : 42
-    const y = 55 - Math.sin(angle) * yAmplitude
+    // 楕円のアーチに合わせたY座標の計算
+    // 南中の位置を少し下げるために振幅を減少
+    const yAmplitude = isSun ? 35 : 40
+    const y = 60 - Math.sin(angle) * yAmplitude
     
     sprite.x = (x / 100) * 192
     sprite.y = y
