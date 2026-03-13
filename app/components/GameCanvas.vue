@@ -858,9 +858,12 @@ onMounted(async () => {
   }))
   landSprite.width = 192
   landSprite.height = 24
-  landSprite.y = 60 - 24 + 4
+  landSprite.x = 96
+  landSprite.y = 60 - 24 + 4 + 5
   landSprite.alpha = 0.9
   landSprite.zIndex = 6
+  landSprite.anchor.set(0.5, 0)
+  landSprite.scale.set(1.6, 0.8)
   timeDisplayContent.addChild(landSprite)
 
   function updateSkyLayer(sprite: PIXI.Sprite, hour: number) {
