@@ -506,23 +506,6 @@ onMounted(async () => {
     mistLayers.push(ts)
   }
 
-  // 亡霊のスプライト
-  const spiritSilhouettes: { sprite: PIXI.Text, speed: number }[] = []
-  const ghostIcons = ['👻', '💀', '🌫️']
-  for (let i = 0; i < 8; i++) {
-    const spirit = new PIXI.Text({
-      text: ghostIcons[Math.floor(Math.random() * ghostIcons.length)],
-      style: { fontSize: 40 + Math.random() * 40 }
-    })
-    spirit.alpha = 0.05 + Math.random() * 0.1
-    spirit.x = Math.random() * 1920
-    spirit.y = Math.random() * 1080
-    backgroundLayer.addChild(spirit)
-    spiritSilhouettes.push({
-      sprite: spirit,
-      speed: 0.5 + Math.random() * 1.5
-    })
-  }
   // --- Title Screen PIXI Implementation ---
   const titleBg = new PIXI.Sprite(titleBgTexture)
   titleBg.anchor.set(0.5)
