@@ -23,6 +23,11 @@ const multiSendTargetId = ref<string | null>(null)
 const selectedUnitId = ref<string | null>(null)
 const menuJustOpened = ref(false)
 
+// Transition State
+const isTransitioning = ref(false)
+const titleAlpha = ref(1)
+const FADE_OUT_DURATION = 1000 // ms
+
 // Context Menu State
 const contextMenu = ref<{
   visible: boolean;
@@ -215,7 +220,8 @@ onMounted(async () => {
     mapTilesetTexture,
     skyTilesetTexture,
     titleBgTexture,
-    reliefTexture
+    reliefTexture,
+    bgCursedMistTexture
   ] = await Promise.all([
     PIXI.Assets.load(playerSpritesheetPath),
     PIXI.Assets.load(playerRedSpritesheetPath),
@@ -226,7 +232,8 @@ onMounted(async () => {
     PIXI.Assets.load(mapTilesetPath),
     PIXI.Assets.load('/assets/Denzi100225-4.png'),
     PIXI.Assets.load('/images/title_bg.png'),
-    PIXI.Assets.load('/assets/timedisplay_relief.png')
+    PIXI.Assets.load('/assets/timedisplay_relief.png'),
+    PIXI.Assets.load('/assets/bg_cursed_mist.png')
   ])
 
   // レリーフの透過処理を実行
@@ -453,6 +460,7 @@ onMounted(async () => {
   }
 
   // Layer Containers for rendering order
+  const backgroundLayer = new PIXI.Container()
   const mapLayer = new PIXI.Container()
   const zoneLayer = new PIXI.Container()
   const highlightLayer = new PIXI.Container()
@@ -462,12 +470,59 @@ onMounted(async () => {
 
   mainLayer.sortableChildren = true
 
+  app.stage.addChild(backgroundLayer)
   app.stage.addChild(mapLayer)
   app.stage.addChild(zoneLayer)
   app.stage.addChild(highlightLayer)
   app.stage.addChild(mainLayer)
   app.stage.addChild(uiLayer)
   app.stage.addChild(titleLayer)
+
+  // --- Background "Cursed Mist" Implementation ---
+  const bgSprite = new PIXI.Sprite(bgCursedMistTexture)
+  bgSprite.width = 1920
+  bgSprite.height = 1080
+  backgroundLayer.addChild(bgSprite)
+
+  // 霧の層 (多重スクロール)
+  const mistLayers: PIXI.TilingSprite[] = []
+  const mistColors = [0x2ecc71, 0x1abc9c, 0x000000] // 緑、青緑、黒の霧
+  for (let i = 0; i < 3; i++) {
+    // 霧の質感を出すための簡易的なグラフィックテクスチャ生成
+    const mistGfx = new PIXI.Graphics()
+      .circle(64, 64, 60)
+      .fill({ color: mistColors[i % 3], alpha: 0.1 })
+    // Blur filter for softness in v8 is Assets based or Filter based,
+    // for simplicity, let's just use semi-transparent circles in TilingSprite
+    const mistTex = app.renderer.generateTexture(mistGfx)
+    const ts = new PIXI.TilingSprite({
+        texture: mistTex,
+        width: 1920,
+        height: 1080
+    })
+    ts.alpha = 0.2
+    ts.blendMode = 'screen'
+    backgroundLayer.addChild(ts)
+    mistLayers.push(ts)
+  }
+
+  // 亡霊のスプライト
+  const spiritSilhouettes: { sprite: PIXI.Text, speed: number }[] = []
+  const ghostIcons = ['👻', '💀', '🌫️']
+  for (let i = 0; i < 8; i++) {
+    const spirit = new PIXI.Text({
+      text: ghostIcons[Math.floor(Math.random() * ghostIcons.length)],
+      style: { fontSize: 40 + Math.random() * 40 }
+    })
+    spirit.alpha = 0.05 + Math.random() * 0.1
+    spirit.x = Math.random() * 1920
+    spirit.y = Math.random() * 1080
+    backgroundLayer.addChild(spirit)
+    spiritSilhouettes.push({
+      sprite: spirit,
+      speed: 0.5 + Math.random() * 1.5
+    })
+  }
   // --- Title Screen PIXI Implementation ---
   const titleBg = new PIXI.Sprite(titleBgTexture)
   titleBg.anchor.set(0.5)
@@ -630,9 +685,33 @@ onMounted(async () => {
   })
 
   startBtn.on('pointerdown', () => {
-    titleLayer.visible = false
-    gameStore.startGame('')
+    if (isTransitioning.value) return
+    startTransition('')
   })
+
+  async function startTransition(customSeed: string) {
+    isTransitioning.value = true
+    const startTime = Date.now()
+    
+    // ゲームの初期化を先に行っておき、フェード中も描画できるようにする
+    gameStore.initGame(customSeed)
+    gameStore.status = 'playing'
+
+    const fadeTicker = () => {
+      const elapsed = Date.now() - startTime
+      const progress = Math.min(1, elapsed / FADE_OUT_DURATION)
+      titleAlpha.value = 1 - progress
+      titleLayer.alpha = titleAlpha.value
+
+      if (progress < 1) {
+        requestAnimationFrame(fadeTicker)
+      } else {
+        isTransitioning.value = false
+        titleLayer.visible = false
+      }
+    }
+    requestAnimationFrame(fadeTicker)
+  }
 
   // Seed Button
   const seedBtn = new PIXI.Text({
@@ -656,11 +735,10 @@ onMounted(async () => {
   seedBtn.on('pointerout', () => { seedBtn.style.fill = 0x999999 })
 
   seedBtn.on('pointerdown', () => {
-    // For now, simple prompt until we have a PIXI modal
+    if (isTransitioning.value) return
     const input = window.prompt('SEEDを入力してください (6桁の数字)', '')
     if (input !== null) {
-      titleLayer.visible = false
-      gameStore.startGame(input)
+      startTransition(input)
     }
   })
 
@@ -876,6 +954,8 @@ onMounted(async () => {
   landSprite.scale.set(1.8, 1.2)
   timeDisplayContent.addChild(landSprite)
 
+
+
   function updateSkyLayer(sprite: PIXI.Sprite, hour: number) {
     const elapsed = (hour - 6 + 24) % 24
     const row = elapsed % 6
@@ -902,8 +982,10 @@ onMounted(async () => {
   function updateCelestialPosition(sprite: PIXI.Sprite, type: 'sun' | 'moon') {
     const dt = gameStore.dayTime
     const isSun = type === 'sun'
-    const startTime = isSun ? 240 : 1080
-    const angle = ((dt - startTime + 1440) % 1440) / 1440 * Math.PI * 2
+    // 12:00 (720分) で最高点 (Math.sin = 1) になるように角度を計算
+    // offset: 太陽は12時に最高点、月は0時に最高点
+    const offset = isSun ? 720 : 0
+    const angle = ((dt - offset + 1440 + 360) % 1440) / 1440 * Math.PI * 2
     
     // 楕円のアーチに合わせたX座標の計算 (中心50%, 振幅をさらに中心寄りに調整)
     const x = 50 - Math.cos(angle) * 30
@@ -1034,6 +1116,7 @@ onMounted(async () => {
       highlightLayer.visible = false
       mainLayer.visible = false
       uiLayer.visible = false
+      backgroundLayer.visible = false
 
       // Animate title glow
       const glowScale = 1 + Math.sin(Date.now() * 0.001) * 0.02
@@ -1066,12 +1149,33 @@ onMounted(async () => {
       return // Don't run game logic if in title
     }
 
-    titleLayer.visible = false
-    mapLayer.visible = true
-    zoneLayer.visible = true
-    highlightLayer.visible = true
-    mainLayer.visible = true
-    uiLayer.visible = true
+    if (isTransitioning.value || gameStore.status === 'playing') {
+      titleLayer.visible = titleAlpha.value > 0
+      mapLayer.visible = true
+      zoneLayer.visible = true
+      highlightLayer.visible = true
+      mainLayer.visible = true
+      uiLayer.visible = true
+      backgroundLayer.visible = true
+    } else {
+      titleLayer.visible = false
+    }
+
+    // 背景アニメーションの更新
+    // 霧のスクロール
+    mistLayers.forEach((mist, i) => {
+      const mistSpeed = (0.2 + i * 0.1) * ticker.deltaTime
+      mist.tilePosition.x += mistSpeed
+      mist.tilePosition.y += Math.sin(Date.now() * 0.001 + i) * 0.2
+      
+      // 昼夜連動: 夜間(alpha=0.5)に合わせて霧を濃くする
+      const nightAlpha = getNightAlpha(gameStore.dayTime)
+      mist.alpha = 0.1 + (nightAlpha * 0.3)
+    })
+
+    // 背景画像自体の夜間tint（マップと同様に少し暗くする）
+    const bgNightTint = getNightTint(gameStore.dayTime)
+    bgSprite.tint = bgNightTint
 
     gameStore.update(deltaSeconds)
 
@@ -1082,7 +1186,7 @@ onMounted(async () => {
 
     // Update PIXI-based TimeDisplay
     const dt = gameStore.dayTime
-    const shifted = (dt + 45) % 1440
+    const shifted = dt % 1440
     const hour = Math.floor(shifted / 60) % 24
     const minutes = shifted % 60
     const FADE_DURATION = 45
@@ -1106,6 +1210,8 @@ onMounted(async () => {
 
     updateCelestialPosition(sunSprite, 'sun')
     updateCelestialPosition(moonSprite, 'moon')
+
+
 
     // Update SEED (in case it changes, though usually static)
     seedText.text = `SEED: ${gameStore.seed}`
