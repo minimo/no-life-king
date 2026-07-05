@@ -1,4 +1,4 @@
-import { GRID_MAX, TILE_PX } from './constants'
+import { GRID_MAX, GRID_SIZE, TILE_PX } from './constants'
 import { getTileCost } from './terrain'
 import type { Owner, Point, Rank } from '../types/game'
 
@@ -21,7 +21,8 @@ export function findPath(mapGrid: number[][], startWX: number, startWY: number, 
         [1, -1, 1.414], [1, 0, 1], [1, 1, 1.414],
     ]
 
-    const key = (x: number, y: number) => y * 51 + x
+    const GRID_W = GRID_SIZE
+    const key = (x: number, y: number) => y * GRID_W + x
     const gScore = new Map<number, number>()
     const fScore = new Map<number, number>()
     const cameFrom = new Map<number, number>()
@@ -83,8 +84,8 @@ export function findPath(mapGrid: number[][], startWX: number, startWY: number, 
         if (cur.k === ek) { found = true; break }
         closed.add(cur.k)
 
-        const cx = cur.k % 51
-        const cy = (cur.k - cx) / 51
+        const cx = cur.k % GRID_W
+        const cy = (cur.k - cx) / GRID_W
         const curG = gScore.get(cur.k) ?? Infinity
 
         for (const [ddx, ddy, baseDist] of DIRS) {
@@ -118,8 +119,8 @@ export function findPath(mapGrid: number[][], startWX: number, startWY: number, 
     const gridPath: Point[] = []
     let ck = ek
     while (ck !== undefined) {
-        const cx = ck % 51
-        const cy = (ck - cx) / 51
+        const cx = ck % GRID_W
+        const cy = (ck - cx) / GRID_W
         gridPath.unshift({ x: cx, y: cy })
         if (ck === sk) break
         ck = cameFrom.get(ck)!
