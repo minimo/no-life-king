@@ -78,8 +78,10 @@ export function createHudRenderer(app: PIXI.Application, uiLayer: PIXI.Container
         updateSliderFromPos(localX)
     }
 
+    const handleSliderPointerUp = () => { isDraggingSlider = false }
+
     window.addEventListener('pointermove', originalHandlePointerMove)
-    window.addEventListener('pointerup', () => { isDraggingSlider = false })
+    window.addEventListener('pointerup', handleSliderPointerUp)
 
     return {
         update() {
@@ -90,6 +92,10 @@ export function createHudRenderer(app: PIXI.Application, uiLayer: PIXI.Container
             sliderLabel.text = `Send Ratio: ${Math.round(gameStore.sendRatio * 100)}%`
             sliderLabel.x = 200 - sliderLabel.width / 2
             sliderHandle.x = gameStore.sendRatio * trackWidth
+        },
+        destroy() {
+            window.removeEventListener('pointermove', originalHandlePointerMove)
+            window.removeEventListener('pointerup', handleSliderPointerUp)
         },
     }
 }

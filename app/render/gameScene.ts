@@ -169,6 +169,7 @@ export async function createGameScene({ canvasEl, gameStore, input }: GameSceneO
         destroy() {
             window.removeEventListener('pointerup', input.handleGlobalPointerUp)
             window.removeEventListener('pointermove', input.handleGlobalPointerMove)
+            hudRenderer.destroy()
             app.stage.off('pointermove', handleStagePointerMove)
             app.stage.off('pointerdown', input.handleStagePointerDown)
             app.ticker.remove(ticker)
