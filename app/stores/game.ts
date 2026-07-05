@@ -336,11 +336,6 @@ export const useGameStore = defineStore('game', {
 
             // Mulberry32 PRNG
             const seedNum = hashString(this.seed)
-            const random = () => {
-                let t = (seedNum ^ (seedNum >>> 15)) * 0x85ebca6b
-                t = (t ^ (t >>> 13)) * 0xc2b2ae35
-                return ((t ^ (t >>> 16)) >>> 0) / 4294967296
-            }
 
             // Better PRNG state management if needed, but for simplicity:
             let s = seedNum

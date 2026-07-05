@@ -1,10 +1,5 @@
 <script setup lang="ts">
-import { useGameStore } from '~/stores/game'
 import GameCanvas from '~/components/GameCanvas.vue'
-import TitleScreen from '~/components/TitleScreen.vue'
-import TimeDisplay from '~/components/TimeDisplay.vue'
-
-const gameStore = useGameStore()
 </script>
 
 <template>
