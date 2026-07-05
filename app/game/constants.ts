@@ -1,3 +1,5 @@
+import type { Rank } from '../types/game'
+
 export const GRID_MAX = 52
 export const GRID_SIZE = 53
 export const TILE_PX = 16
@@ -22,10 +24,16 @@ export const TILE_VARIANT = {
     WOOD_DENSE_MAX: 35,
 } as const
 
+type RankConfig = {
+    cap: number
+    growth: number
+    upgradeCost: number
+}
+
 export const RANK_CONFIG = {
     1: { cap: 100, growth: 2.0, upgradeCost: 80 },
     2: { cap: 150, growth: 3.0, upgradeCost: 120 },
     3: { cap: 999, growth: 4.5, upgradeCost: Infinity },
-}
+} as const satisfies Record<Rank, RankConfig>
 
 export const UNIT_SPEED = 30 // px/sec
