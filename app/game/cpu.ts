@@ -68,7 +68,7 @@ export function tryCPUSend(state: GameState, source: Base, target: Base): boolea
 
     if (available >= required && available >= 1) {
         // A*パスから移動時間を推定し、到着時の残り体力を見積もる
-        const path = findPath(state.mapGrid, source.x, source.y, target.x, target.y, 'cpu', source.rank)
+        const path = findPath(state.mapGrid, source.x, source.y, target.x, target.y, source.rank)
         let totalDist = 0
         for (let i = 0; i < path.length - 1; i++) {
             totalDist += Math.hypot(path[i + 1]!.x - path[i]!.x, path[i + 1]!.y - path[i]!.y)

@@ -16,7 +16,7 @@ export function sendUnits(state: GameState, sourceId: string, targetId: string, 
 
     source.production -= sendPower
 
-    const path = findPath(state.mapGrid, source.x, source.y, target.x, target.y, source.owner, source.rank)
+    const path = findPath(state.mapGrid, source.x, source.y, target.x, target.y, source.rank)
 
     state.units.push({
         id: Math.random().toString(36).substr(2, 9),
@@ -45,7 +45,7 @@ export function redirectUnit(state: GameState, unitId: string, targetId: string)
 
     unit.targetId = targetId
     unit.isStopped = false
-    unit.path = findPath(state.mapGrid, unit.x, unit.y, target.x, target.y, unit.owner, unit.rank)
+    unit.path = findPath(state.mapGrid, unit.x, unit.y, target.x, target.y, unit.rank)
     unit.pathIndex = 0
     unit.elapsedTime = 0
 }
@@ -141,7 +141,7 @@ export function updateSimulation(state: GameState, deltaSeconds: number): void {
                     const dy = targetUnit.y - unit.y
                     const dist = Math.hypot(dx, dy)
                     if (dist > 2) {
-                        const pursuitSpeedMult = getTerrainSpeedMultiplier(state.mapGrid, unit.x, unit.y, unit.owner, state.bases, unit.rank)
+                        const pursuitSpeedMult = getTerrainSpeedMultiplier(state.mapGrid, unit.x, unit.y, state.bases, unit.rank)
                         const pursuitTimeMult = getTimeSpeedMultiplier(unit.owner, state.dayTime)
                         // 金色ユニット (Rank 3) は移動速度 1.1倍
                         const rankSpeedMult = unit.rank === 3 ? 1.1 : 1.0
@@ -155,7 +155,7 @@ export function updateSimulation(state: GameState, deltaSeconds: number): void {
                 // Regular movement: follow waypoints
                 const nextWP = unit.path[unit.pathIndex + 1]
                 if (nextWP) {
-                    const moveSpeedMult = getTerrainSpeedMultiplier(state.mapGrid, unit.x, unit.y, unit.owner, state.bases, unit.rank)
+                    const moveSpeedMult = getTerrainSpeedMultiplier(state.mapGrid, unit.x, unit.y, state.bases, unit.rank)
                     const moveTimeMult = getTimeSpeedMultiplier(unit.owner, state.dayTime)
                     // 金色ユニット (Rank 3) は移動速度 1.1倍
                     const rankSpeedMult = unit.rank === 3 ? 1.1 : 1.0

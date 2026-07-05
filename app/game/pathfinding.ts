@@ -1,9 +1,9 @@
 import { GRID_MAX, GRID_SIZE, TILE_PX } from './constants'
 import { getTileCost } from './terrain'
-import type { Owner, Point, Rank } from '../types/game'
+import type { Point, Rank } from '../types/game'
 
 /** A*経路探索: グリッド座標で探索し、ワールド座標のウェイポイント配列を返す */
-export function findPath(mapGrid: number[][], startWX: number, startWY: number, endWX: number, endWY: number, owner: Owner, rank: Rank): Point[] {
+export function findPath(mapGrid: number[][], startWX: number, startWY: number, endWX: number, endWY: number, rank: Rank): Point[] {
     const sx = Math.round(startWX / TILE_PX)
     const sy = Math.round(startWY / TILE_PX)
     const ex = Math.round(endWX / TILE_PX)
@@ -95,7 +95,7 @@ export function findPath(mapGrid: number[][], startWX: number, startWY: number, 
             const nk = key(nx, ny)
             if (closed.has(nk)) continue
 
-            const tileCost = getTileCost(mapGrid, nx, ny, owner, rank)
+            const tileCost = getTileCost(mapGrid, nx, ny, rank)
             const tentG = curG + baseDist * tileCost
 
             if (tentG < (gScore.get(nk) ?? Infinity)) {

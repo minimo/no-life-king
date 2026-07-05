@@ -97,7 +97,7 @@ export async function createGameScene({ canvasEl, gameStore, input }: GameSceneO
     })
 
     const getPlayerPath = (sx: number, sy: number, tx: number, ty: number, rank: 1 | 2 | 3) => {
-        return gameStore.getPath(sx, sy, tx, ty, 'player', rank)
+        return gameStore.getPath(sx, sy, tx, ty, rank)
     }
 
     const ticker = (ticker: PIXI.Ticker) => {

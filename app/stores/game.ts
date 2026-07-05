@@ -90,8 +90,8 @@ export const useGameStore = defineStore('game', {
         },
 
         // A*経路探索のラッパー（GameCanvas.vueからプレビュー用に利用）
-        getPath(startWX: number, startWY: number, endWX: number, endWY: number, owner: Owner, rank: Rank): { x: number; y: number }[] {
-            return findPath(this.mapGrid, startWX, startWY, endWX, endWY, owner, rank)
+        getPath(startWX: number, startWY: number, endWX: number, endWY: number, rank: Rank): { x: number; y: number }[] {
+            return findPath(this.mapGrid, startWX, startWY, endWX, endWY, rank)
         },
 
         updateCPU(delta: number): void {

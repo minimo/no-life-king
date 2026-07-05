@@ -1,8 +1,8 @@
 import { GRID_MAX, TILE, TILE_PX, TILE_VARIANT } from './constants'
-import type { Base, Owner, Rank } from '../types/game'
+import type { Base, Rank } from '../types/game'
 
 /** ユニット現在位置の地形タイルから速度倍率を返す */
-export function getTerrainSpeedMultiplier(mapGrid: number[][], worldX: number, worldY: number, owner: Owner, bases: Base[], rank: Rank): number {
+export function getTerrainSpeedMultiplier(mapGrid: number[][], worldX: number, worldY: number, bases: Base[], rank: Rank): number {
     const gx = Math.round(worldX / TILE_PX)
     const gy = Math.round(worldY / TILE_PX)
     if (gy < 0 || gy > GRID_MAX || gx < 0 || gx > GRID_MAX) return 1.0
@@ -47,7 +47,7 @@ export function getTerrainSpeedMultiplier(mapGrid: number[][], worldX: number, w
 }
 
 /** グリッドタイルの移動コストを返す（速度倍率の逆数）*/
-export function getTileCost(mapGrid: number[][], gx: number, gy: number, owner: Owner, rank: Rank): number {
+export function getTileCost(mapGrid: number[][], gx: number, gy: number, rank: Rank): number {
     if (gy < 0 || gy > GRID_MAX || gx < 0 || gx > GRID_MAX) return 1.0
     const tile = mapGrid[gy]?.[gx] ?? TILE.GRASS
     if (tile === TILE.WATER) {
