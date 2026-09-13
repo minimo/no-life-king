@@ -1,9 +1,11 @@
 import { computed, nextTick, ref } from 'vue'
-import * as PIXI from 'pixi.js'
+import type * as PIXI from 'pixi.js'
 import { RANK_CONFIG } from '~/game/constants'
 import { fromIso, toIso } from '~/render/coords'
 import type { Base, Unit } from '~/types/game'
 import type { useGameStore } from '~/stores/game'
+
+type EntityPointerEvent = Pick<PointerEvent, 'clientX' | 'clientY' | 'stopPropagation'>
 
 const DOUBLE_CLICK_THRESHOLD = 300 // ms
 const LONG_PRESS_THRESHOLD = 500 // ms
@@ -11,6 +13,8 @@ const LONG_PRESS_THRESHOLD = 500 // ms
 export function useGameInput(gameStore: ReturnType<typeof useGameStore>) {
     const contextMenuRef = ref<HTMLElement | null>(null)
     const mousePos = ref({ x: 0, y: 0 })
+    const worldMousePos = ref({ x: 0, y: 0 })
+    let projectPoint = toIso
     const pointerDownPos = ref({ x: 0, y: 0 })
     const pointerDownEntityId = ref<string | null>(null)
     const draggingFromBaseId = ref<string | null>(null)
@@ -99,7 +103,7 @@ export function useGameInput(gameStore: ReturnType<typeof useGameStore>) {
         menuJustOpened.value = true
     }
 
-    const handleBasePointerDown = (base: Base, e: PIXI.FederatedPointerEvent) => {
+    const handleBasePointerDown = (base: Base, e: EntityPointerEvent) => {
         clearLongPress()
 
         pointerDownPos.value = { x: e.clientX, y: e.clientY }
@@ -132,7 +136,7 @@ export function useGameInput(gameStore: ReturnType<typeof useGameStore>) {
         lastClickedBaseId = base.id
     }
 
-    const handleUnitPointerDown = (unit: Unit, e: PIXI.FederatedPointerEvent) => {
+    const handleUnitPointerDown = (unit: Unit, e: EntityPointerEvent) => {
         e.stopPropagation()
         pointerDownPos.value = { x: e.clientX, y: e.clientY }
         selectedUnitId.value = selectedUnitId.value === unit.id ? null : unit.id
@@ -154,8 +158,8 @@ export function useGameInput(gameStore: ReturnType<typeof useGameStore>) {
     }
 
     const updateTargetedBase = () => {
-        // Convert screen mouse pos to logical world pos for interaction
-        const logicalMouse = fromIso(mousePos.value.x, mousePos.value.y)
+        // The renderer supplies logical map coordinates, independent of the camera.
+        const logicalMouse = worldMousePos.value
 
         if (draggingFromBaseId.value) {
             let closestBaseId: string | null = null
@@ -177,10 +181,34 @@ export function useGameInput(gameStore: ReturnType<typeof useGameStore>) {
         }
     }
 
+    const setWorldPointer = (point: { x: number; y: number }) => {
+        worldMousePos.value = point
+        mousePos.value = toIso(point.x, point.y)
+        if (multiSendTargetId.value) {
+            const target = gameStore.bases.find(b => b.id === multiSendTargetId.value)
+            if (target && Math.hypot(target.x - point.x, target.y - point.y) > 30) multiSendTargetId.value = null
+        }
+        updateTargetedBase()
+    }
+
+    const reset = () => {
+        clearLongPress()
+        draggingFromBaseId.value = null
+        targetedBaseId.value = null
+        multiSendTargetId.value = null
+        selectedUnitId.value = null
+        pointerDownEntityId.value = null
+        contextMenu.value = { visible: false, x: 0, y: 0, type: null, targetId: null }
+        menuJustOpened.value = false
+        lastClickTime = 0
+        lastClickedBaseId = ''
+    }
+
     const handleStagePointerMove = (app: PIXI.Application, e: PIXI.FederatedPointerEvent) => {
         const localPos = e.getLocalPosition(app.stage)
         mousePos.value = { x: localPos.x, y: localPos.y }
         const logicalMouse = fromIso(localPos.x, localPos.y)
+        worldMousePos.value = logicalMouse
 
         if (multiSendTargetId.value) {
             const targetBase = gameStore.bases.find(b => b.id === multiSendTargetId.value)
@@ -217,7 +245,7 @@ export function useGameInput(gameStore: ReturnType<typeof useGameStore>) {
     const handleGlobalPointerUp = async (e: PointerEvent) => {
         clearLongPress()
 
-        const logicalMouse = fromIso(mousePos.value.x, mousePos.value.y)
+        const logicalMouse = worldMousePos.value
         const distMoved = Math.hypot(e.clientX - pointerDownPos.value.x, e.clientY - pointerDownPos.value.y)
         const isClick = distMoved < 10
 
@@ -285,7 +313,7 @@ export function useGameInput(gameStore: ReturnType<typeof useGameStore>) {
             if (success) {
                 const base = gameStore.bases.find(b => b.id === contextMenu.value.targetId)
                 if (base && createFloatingText) {
-                    const pos = toIso(base.x, base.y)
+                    const pos = projectPoint(base.x, base.y)
                     createFloatingText('RANK UP!', pos.x, pos.y - 60, 0x2ecc71)
                 }
             }
@@ -296,6 +324,10 @@ export function useGameInput(gameStore: ReturnType<typeof useGameStore>) {
     }
 
     return {
+        setWorldPointer,
+        worldMousePos,
+        reset,
+        setProjectPoint: (fn: typeof toIso) => { projectPoint = fn },
         contextMenuRef,
         mousePos,
         pointerDownPos,

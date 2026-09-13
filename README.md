@@ -1,75 +1,44 @@
-# Nuxt Minimal Starter
+# NO LIFE KING
 
-Look at the [Nuxt documentation](https://nuxt.com/docs/getting-started/introduction) to learn more.
+Nuxt / Vue / Pinia と Three.js によるリアルタイム領土攻略ゲームです。
 
-## Setup
-
-Make sure to install dependencies:
+## 起動
 
 ```bash
-# npm
 npm install
-
-# pnpm
-pnpm install
-
-# yarn
-yarn install
-
-# bun
-bun install
-```
-
-## Development Server
-
-Start the development server on `http://localhost:3000`:
-
-```bash
-# npm
 npm run dev
-
-# pnpm
-pnpm dev
-
-# yarn
-yarn dev
-
-# bun
-bun run dev
 ```
 
-## Production
-
-Build the application for production:
+開発サーバー: http://localhost:3340/
 
 ```bash
-# npm
-npm run build
-
-# pnpm
-pnpm build
-
-# yarn
-yarn build
-
-# bun
-bun run build
-```
-
-Locally preview production build:
-
-```bash
-# npm
+npm test       # ゲームロジック・入力・3D地形の回帰テスト
+npm run build # 本番ビルド
 npm run preview
-
-# pnpm
-pnpm preview
-
-# yarn
-yarn preview
-
-# bun
-bun run preview
 ```
 
-Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.
+## 操作
+
+- 自軍の拠点から目的の拠点へドラッグ: 指定割合の兵力を出兵
+- 目的の拠点をダブルクリック: 全自軍拠点から一斉出兵
+- 自軍拠点を長押し: アップグレードメニュー
+- ユニットをクリック: 進行経路を表示
+- 自軍ユニットを拠点へドラッグ: 進路変更
+- 自軍ユニットを長押し: 待機メニュー
+- 下部スライダー: 出兵割合を10〜90%で変更
+- 拠点・兵士のない場所から左ドラッグ: パン（平行移動）。右・中ボタンドラッグでもパン可能
+- Shift＋右ドラッグ: 視点回転 / ホイール: 拡大縮小
+- タッチ操作: 1本指で選択・出兵・長押し、何もない場所から1本指でドラッグするとパン。2本指でパン・拡大縮小
+- 「視点リセット」: 戦場全体を見渡す初期視点に戻る
+
+## 3D描画
+
+`app/render/gameScene.ts` がThree.jsのシーン、カメラ、照明、入力のレイキャストとゲームループを管理します。`app/render/three/` に地形の高さ、森林・川・橋、砦・キャラクターのモデルを分離しています。3Dモデルは形状データから生成するため、外部モデルのダウンロードは不要です。WebGL 2対応ブラウザーを使用してください。
+
+地形の高低差は描画専用です。既存の `app/game/` のマップ生成・経路探索・戦闘・生産・昼夜効果・CPU処理はそのまま使用します。同じSEEDで同じ配置と地形が再現され、兵士・経路表示は地面と橋の高さに追従します。森林にはインスタンス描画を使用し、再開始・SEED変更・画面終了時に不要な描画リソースを解放します。
+
+時間表示には2D版の石造りプレートと空・太陽・月の画像を再利用し、数字の時刻は表示しません。拠点と兵士のラベルは、所属色の数値だけを枠なしで表示します。
+
+砦の石積み・アーチ門・胸壁、兵士の鎧・兜・関節、枝と葉の重なる樹冠をモデル化しています。石材・木材・金属・布・地面に表面の質感を加え、滑らかな地形と環境光の反射を使用しています。静的な細部は材質ごとに結合し、樹木はインスタンス描画で負荷を抑えています。
+
+プレイヤーの兵士は人間、敵の兵士は骸骨のモンスターとして表示します。領域は所属色の半透明の塗りで地形に沿って表示し、進路は所属色の太い線と塗りつぶした矢じりで表示します。矢印の太さはズームにかかわらず一定です。
