@@ -45,7 +45,6 @@ export async function createGameScene({ canvasEl, gameStore, input }: GameSceneO
     controls.screenSpacePanning = false
     controls.panSpeed = 1.15
     controls.minDistance = 120
-    controls.maxDistance = 2300
     controls.minPolarAngle = .25
     controls.maxPolarAngle = Math.PI / 2.3
     controls.mouseButtons = { LEFT: null as unknown as THREE.MOUSE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.PAN }
@@ -67,7 +66,8 @@ export async function createGameScene({ canvasEl, gameStore, input }: GameSceneO
         controls.target.set(416, 24, 416)
         const fit = Math.max(1, 1.15 / camera.aspect)
         camera.position.set(416 + 944 * fit, 24 + 700 * fit, 416 + 1000 * fit)
-        controls.maxDistance = Math.max(2300, 2600 * fit)
+        // Allow only a little extra zoom-out beyond the view fitted to the screen.
+        controls.maxDistance = camera.position.distanceTo(controls.target) * 1.1
         camera.zoom = 1
         camera.updateProjectionMatrix()
         controls.update()

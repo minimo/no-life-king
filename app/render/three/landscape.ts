@@ -3,7 +3,8 @@ import { createMulberry32, hashString } from '../../game/random'
 import { TILE, TILE_PX } from '../../game/constants'
 import { MAP_MIN, MAP_MAX, type Heightfield } from './heightfield'
 
-export const LANDSCAPE_RADIUS = 12000
+// Fix the full landscape width at 3,300, independently of the battlefield size.
+export const LANDSCAPE_RADIUS = 1650
 export const TERRAIN_CENTER = (MAP_MIN + MAP_MAX) / 2
 export const smooth = (a: number, b: number, value: number) => {
     const t = Math.max(0, Math.min(1, (value - a) / (b - a)))
