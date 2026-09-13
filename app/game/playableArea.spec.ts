@@ -8,7 +8,7 @@ import { getTileCost } from './terrain'
 import { expandBasePlacement, getPlayableLandscape, getPlayableTile, PLAYABLE_MIN, PLAYABLE_MAX, PLAYABLE_SIZE } from './playableArea'
 
 describe('expanded base placement on the existing landscape', () => {
-    it('keeps the original terrain and bases, and fills the playable area with 28 reachable bases', () => {
+    it('keeps the original terrain and bases, and fills the playable area with 26 reachable bases', () => {
         setActivePinia(createPinia())
         const game = useGameStore()
         game.initGame('123456')
@@ -23,11 +23,11 @@ describe('expanded base placement on the existing landscape', () => {
         expect([PLAYABLE_MIN, PLAYABLE_MAX]).toEqual([-284, 1116])
         const roster = (bases: typeof original.bases) => bases.map(({ x, y, ...base }) => base)
         expect(roster(game.bases.slice(0, original.bases.length))).toEqual(roster(original.bases))
-        expect(game.bases).toHaveLength(28)
+        expect(game.bases).toHaveLength(26)
         expect(game.bases.filter(base => base.isCore)).toHaveLength(2)
-        expect(game.bases.filter(base => base.owner === 'neutral' && base.rank === 2)).toHaveLength(5)
+        expect(game.bases.filter(base => base.owner === 'neutral' && base.rank === 2)).toHaveLength(3)
         expect(game.bases.filter(base => base.owner === 'neutral' && base.rank === 1)).toHaveLength(21)
-        expect(new Set(game.bases.map(base => base.id)).size).toBe(28)
+        expect(new Set(game.bases.map(base => base.id)).size).toBe(26)
         for (const base of game.bases.slice(original.bases.length)) {
             expect(base.production).toBe(base.rank === 2 ? 50 : 10)
         }
@@ -72,10 +72,10 @@ describe('expanded base placement on the existing landscape', () => {
     it.each(['654321', 'terrain-test'])('places bases deterministically on dry lowland for seed %s', seed => {
         const { mapGrid, bases } = generateMap(createMulberry32(hashString(seed)))
         const before = JSON.stringify({ mapGrid, bases })
-        const counts = { forts: 5, villages: 21 }
+        const counts = { forts: 3, villages: 21 }
         const placed = expandBasePlacement(mapGrid, bases, counts)
         expect(expandBasePlacement(mapGrid, bases, counts)).toEqual(placed)
-        expect(placed).toHaveLength(28)
+        expect(placed).toHaveLength(26)
         expect(JSON.stringify({ mapGrid, bases })).toBe(before)
         const landscape = getPlayableLandscape(mapGrid)
         for (const base of placed) {

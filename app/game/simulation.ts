@@ -2,7 +2,31 @@ import { RANK_CONFIG, UNIT_SPEED } from './constants'
 import { calculateTargetZoneRadius, getTimeDecayMultiplier, getTimeSpeedMultiplier } from './daynight'
 import { findPath } from './pathfinding'
 import { getTerrainSpeedMultiplier } from './terrain'
-import type { Base, GameState, Rank, Unit } from '../types/game'
+import type { Base, GameState, Point, Rank, Unit, UnitOrder } from '../types/game'
+
+const BASE_CAMP_CAP = 50
+
+function createUnit(state: GameState, source: Base, targetId: string, destination: Point, order: UnitOrder, ratio: number): void {
+    const sendPower = Math.floor(source.production * ratio)
+    if (sendPower < 1) return
+
+    source.production -= sendPower
+    state.units.push({
+        id: Math.random().toString(36).substr(2, 9),
+        owner: source.owner,
+        sourceId: source.id,
+        targetId,
+        order,
+        destination: order === 'base' ? undefined : { ...destination },
+        power: sendPower,
+        path: findPath(state.mapGrid, source.x, source.y, destination.x, destination.y, source.rank),
+        pathIndex: 0,
+        x: source.x,
+        y: source.y,
+        elapsedTime: 0,
+        rank: source.rank,
+    })
+}
 
 export function sendUnits(state: GameState, sourceId: string, targetId: string, ratio = state.sendRatio): void {
     if (state.status !== 'playing') return
@@ -11,26 +35,15 @@ export function sendUnits(state: GameState, sourceId: string, targetId: string, 
     const target = state.bases.find((b: Base) => b.id === targetId)
     if (!source || !target || source.id === target.id) return
 
-    const sendPower = Math.floor(source.production * ratio)
-    if (sendPower < 1) return
+    createUnit(state, source, target.id, target, 'base', ratio)
+}
 
-    source.production -= sendPower
-
-    const path = findPath(state.mapGrid, source.x, source.y, target.x, target.y, source.rank)
-
-    state.units.push({
-        id: Math.random().toString(36).substr(2, 9),
-        owner: source.owner,
-        sourceId: source.id,
-        targetId: target.id,
-        power: sendPower,
-        path,
-        pathIndex: 0,
-        x: source.x,
-        y: source.y,
-        elapsedTime: 0,
-        rank: source.rank,
-    })
+/** Send a force to open ground, where it will either build a camp or wait. */
+export function sendUnitsToPoint(state: GameState, sourceId: string, destination: Point, order: 'camp' | 'wait', ratio = state.sendRatio): void {
+    if (state.status !== 'playing') return
+    const source = state.bases.find((b: Base) => b.id === sourceId)
+    if (!source) return
+    createUnit(state, source, '', destination, order, ratio)
 }
 
 export function redirectUnit(state: GameState, unitId: string, targetId: string): void {
@@ -44,6 +57,8 @@ export function redirectUnit(state: GameState, unitId: string, targetId: string)
     if (unit.targetId === targetId && !unit.isStopped) return
 
     unit.targetId = targetId
+    unit.order = 'base'
+    unit.destination = undefined
     unit.isStopped = false
     unit.path = findPath(state.mapGrid, unit.x, unit.y, target.x, target.y, unit.rank)
     unit.pathIndex = 0
@@ -54,6 +69,8 @@ export function stopUnit(state: GameState, unitId: string): void {
     const unit = state.units.find((u) => u.id === unitId)
     if (unit) {
         unit.isStopped = true
+        unit.order = 'wait'
+        unit.destination = { x: unit.x, y: unit.y }
         unit.path = [{ x: unit.x, y: unit.y }]
         unit.pathIndex = 0
     }
@@ -118,10 +135,11 @@ export function updateSimulation(state: GameState, deltaSeconds: number): void {
             }
         }
 
-        // Progress Movement if not fighting
+        // Progress Movement if not fighting. Waiting units hold their ground and
+        // do not acquire pursuit targets.
         if (!unit.isFighting) {
             // Search for pursuit target
-            if (!unit.pursuitTargetId) {
+            if (!unit.isStopped && !unit.pursuitTargetId) {
                 for (const other of state.units) {
                     if (other && other.owner !== unit.owner) {
                         const dist = Math.hypot(unit.x - other.x, unit.y - other.y)
@@ -133,7 +151,7 @@ export function updateSimulation(state: GameState, deltaSeconds: number): void {
                 }
             }
 
-            if (unit.pursuitTargetId) {
+            if (!unit.isStopped && unit.pursuitTargetId) {
                 const targetUnit = state.units.find(u => u.id === unit.pursuitTargetId)
                 if (targetUnit) {
                     // Move towards target unit
@@ -203,16 +221,19 @@ export function updateSimulation(state: GameState, deltaSeconds: number): void {
                 if (decayMultiplier > 0) {
                     // 自然減衰率: 通常=1.0, 赤=1.1, 金=1.2
                     const rankDecayRate = unit.rank === 2 ? 1.1 : (unit.rank === 3 ? 1.2 : 1.0)
-                    const decayRate = 1.0 * rankDecayRate // Base: 1 power per second
+                    const waitMultiplier = unit.isStopped ? 0.5 : 1.0
+                    const decayRate = 1.0 * rankDecayRate * waitMultiplier // Base: 1 power per second
                     const timeDecay = getTimeDecayMultiplier(unit.owner, state.dayTime)
                     unit.power -= decayRate * decayMultiplier * timeDecay * deltaSeconds
                 }
             }
         }
 
-        const target = state.bases.find(b => b.id === unit.targetId)
+        const target = unit.order === 'base' || !unit.order
+            ? state.bases.find(b => b.id === unit.targetId)
+            : undefined
 
-        if (!target) {
+        if ((unit.order === 'base' || !unit.order) && !target) {
             state.units.splice(i, 1)
             continue
         }
@@ -224,12 +245,72 @@ export function updateSimulation(state: GameState, deltaSeconds: number): void {
 
         // 最終ウェイポイントに到達したら到着（停止中はスキップ）
         if (!unit.isStopped && unit.pathIndex >= unit.path.length - 1) {
-            resolveCombat(unit, target)
-            state.units.splice(i, 1)
+            if (unit.order === 'camp') {
+                establishBaseCamp(state, unit)
+                state.units.splice(i, 1)
+            } else if (unit.order === 'wait') {
+                stopUnit(state, unit.id)
+            } else if (target) {
+                const keepUnit = resolveArrival(state, unit, target)
+                if (!keepUnit) state.units.splice(i, 1)
+            }
         } else {
             // Update position handled above in movement branch
         }
     }
+}
+
+export function establishBaseCamp(state: GameState, unit: Unit): Base {
+    const position = unit.destination ?? { x: unit.x, y: unit.y }
+    const camp: Base = {
+        id: `camp-${unit.id}`,
+        owner: unit.owner,
+        rank: 2,
+        production: Math.min(BASE_CAMP_CAP, Math.max(0, unit.power)),
+        productionCap: BASE_CAMP_CAP,
+        growthRate: RANK_CONFIG[2].growth,
+        isCore: false,
+        isCamp: true,
+        x: position.x,
+        y: position.y,
+        radius: 16,
+        currentZoneRadius: 0,
+    }
+    state.bases.push(camp)
+    return camp
+}
+
+/** Resolve arrival and report whether the attacking unit continues moving. */
+function resolveArrival(state: GameState, unit: Unit, target: Base): boolean {
+    if (!target.isCamp || unit.owner === target.owner) {
+        resolveCombat(unit, target)
+        return false
+    }
+
+    const remainingPower = unit.power - target.production
+    if (remainingPower <= 0) {
+        target.production -= unit.power
+        if (target.production <= 0) state.bases.splice(state.bases.indexOf(target), 1)
+        return false
+    }
+
+    // Camps are destroyed, never captured. Survivors automatically return to
+    // the nearest permanent friendly fort.
+    state.bases.splice(state.bases.indexOf(target), 1)
+    unit.power = remainingPower
+    const home = state.bases
+        .filter(base => base.owner === unit.owner && !base.isCamp)
+        .sort((a, b) => Math.hypot(a.x - unit.x, a.y - unit.y) - Math.hypot(b.x - unit.x, b.y - unit.y))[0]
+    if (!home) return false
+    unit.targetId = home.id
+    unit.order = 'base'
+    unit.destination = undefined
+    unit.isStopped = false
+    unit.pursuitTargetId = null
+    unit.path = findPath(state.mapGrid, unit.x, unit.y, home.x, home.y, unit.rank)
+    unit.pathIndex = 0
+    unit.elapsedTime = 0
+    return true
 }
 
 export function resolveCombat(unit: Unit, target: Base): void {
@@ -260,7 +341,7 @@ export function resolveCombat(unit: Unit, target: Base): void {
 
 export function upgradeBase(state: GameState, baseId: string): boolean {
     const base = state.bases.find(b => b.id === baseId)
-    if (!base || base.rank >= 3) return false
+    if (!base || base.isCamp || base.rank >= 3) return false
 
     const config = RANK_CONFIG[base.rank]
     const cost = config.upgradeCost

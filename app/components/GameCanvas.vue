@@ -67,7 +67,7 @@ onUnmounted(() => {
           <input v-model="customSeed" aria-label="SEED" placeholder="SEEDを入力" maxlength="32" autofocus>
           <button type="submit">開始</button>
         </form>
-        <p class="title-help">拠点をドラッグして出兵 · ダブルクリックで一斉出兵 · 長押しで強化</p>
+        <p class="title-help">拠点をドラッグして出兵・空き地へ指示 · ダブルクリックで一斉出兵 · 長押しで強化</p>
       </div>
     </div>
     <template v-if="ready && gameStore.status !== 'title'">
@@ -77,7 +77,7 @@ onUnmounted(() => {
         <div class="battle-actions"><span>自軍拠点 <b>{{ ownedBases }}</b> / {{ gameStore.bases.length }}</span><button @click="resetView" aria-label="視点をリセット">視点リセット</button></div>
       </header>
       <footer class="battle-footer">
-        <div class="instructions"><span>ドラッグ <b>出兵</b> · ダブルクリック <b>一斉出兵</b> · 長押し <b>強化 / 待機</b></span><span>何もない場所をドラッグでパン · Shift＋右ドラッグで回転 · ホイールでズーム · 2本指の横ドラッグで回転（トラックパッド対応）・ピンチでズーム</span></div>
+        <div class="instructions"><span>拠点からドラッグ <b>出兵 / キャンプ / 待機</b> · ダブルクリック <b>一斉出兵</b> · 長押し <b>強化 / 待機</b></span><span>何もない場所からドラッグでパン · Shift＋右ドラッグで回転 · ホイールでズーム · 2本指の横ドラッグで回転（トラックパッド対応）・ピンチでズーム</span></div>
         <label class="send-control"><span>出兵割合 <strong>{{ Math.round(gameStore.sendRatio * 100) }}%</strong></span><input v-model.number="gameStore.sendRatio" type="range" min="0.1" max="0.9" step="0.1" aria-label="出兵割合"></label>
         <div class="factions"><span class="player-dot">自軍</span><span class="cpu-dot">敵軍</span><span class="neutral-dot">中立</span></div>
       </footer>
@@ -114,6 +114,18 @@ onUnmounted(() => {
         <template v-if="contextMenu.type === 'unit'">
           <button class="context-menu-item" @click="handleContextMenuAction('stop')">
             <span>待機</span>
+          </button>
+        </template>
+
+        <template v-if="contextMenu.type === 'destination'">
+          <button class="context-menu-item" @click="handleContextMenuAction('camp')">
+            <span>ベースキャンプ設営</span>
+          </button>
+          <button class="context-menu-item" @click="handleContextMenuAction('wait')">
+            <span>待機</span>
+          </button>
+          <button class="context-menu-item" @click="handleContextMenuAction('cancel')">
+            <span>キャンセル</span>
           </button>
         </template>
       </div>

@@ -28,14 +28,18 @@ export function useGameInput(gameStore: ReturnType<typeof useGameStore>) {
         visible: boolean;
         x: number;
         y: number;
-        type: 'base' | 'unit' | null;
+        type: 'base' | 'unit' | 'destination' | null;
         targetId: string | null;
+        sourceId: string | null;
+        destination: { x: number; y: number } | null;
     }>({
         visible: false,
         x: 0,
         y: 0,
         type: null,
-        targetId: null
+        targetId: null,
+        sourceId: null,
+        destination: null,
     })
 
     const upgradeCost = computed(() => {
@@ -68,13 +72,22 @@ export function useGameInput(gameStore: ReturnType<typeof useGameStore>) {
         }
     }
 
-    const openContextMenu = async (type: 'base' | 'unit', targetId: string, clickX: number, clickY: number) => {
+    const openContextMenu = async (
+        type: 'base' | 'unit' | 'destination',
+        targetId: string | null,
+        clickX: number,
+        clickY: number,
+        sourceId: string | null = null,
+        destination: { x: number; y: number } | null = null,
+    ) => {
         contextMenu.value = {
             visible: true,
             x: clickX,
             y: clickY,
             type,
-            targetId
+            targetId,
+            sourceId,
+            destination,
         }
 
         await nextTick()
@@ -198,7 +211,7 @@ export function useGameInput(gameStore: ReturnType<typeof useGameStore>) {
         multiSendTargetId.value = null
         selectedUnitId.value = null
         pointerDownEntityId.value = null
-        contextMenu.value = { visible: false, x: 0, y: 0, type: null, targetId: null }
+        contextMenu.value = { visible: false, x: 0, y: 0, type: null, targetId: null, sourceId: null, destination: null }
         menuJustOpened.value = false
         lastClickTime = 0
         lastClickedBaseId = ''
@@ -238,6 +251,8 @@ export function useGameInput(gameStore: ReturnType<typeof useGameStore>) {
     const closeContextMenu = () => {
         contextMenu.value.visible = false
         contextMenu.value.targetId = null
+        contextMenu.value.sourceId = null
+        contextMenu.value.destination = null
         contextMenu.value.type = null
         gameStore.resumeGame()
     }
@@ -301,6 +316,17 @@ export function useGameInput(gameStore: ReturnType<typeof useGameStore>) {
                 } else {
                     gameStore.sendUnits(draggingFromBaseId.value, closestBase.id)
                 }
+            } else if (!draggingFromBaseId.value.startsWith('unit:')) {
+                // Dropping a fort command on open ground presents the two valid
+                // ground orders before committing any troops.
+                await openContextMenu(
+                    'destination',
+                    null,
+                    e.clientX,
+                    e.clientY,
+                    draggingFromBaseId.value,
+                    { ...logicalMouse },
+                )
             }
 
             draggingFromBaseId.value = null
@@ -308,6 +334,15 @@ export function useGameInput(gameStore: ReturnType<typeof useGameStore>) {
     }
 
     const handleContextMenuAction = (action: string) => {
+        if (contextMenu.value.type === 'destination') {
+            const sourceId = contextMenu.value.sourceId
+            const destination = contextMenu.value.destination
+            closeContextMenu()
+            if (sourceId && destination && (action === 'camp' || action === 'wait')) {
+                gameStore.sendUnitsToPoint(sourceId, destination, action)
+            }
+            return
+        }
         if (action === 'upgrade' && contextMenu.value.type === 'base' && contextMenu.value.targetId) {
             const success = gameStore.upgradeBase(contextMenu.value.targetId)
             if (success) {

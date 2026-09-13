@@ -67,15 +67,34 @@ export function createModelKit() {
     }
     const fortCache = new Map<string, THREE.Group>()
     const fort = (base: Base) => {
-        const key = `${base.owner}:${base.rank}:${base.isCore}`
+        const key = `${base.owner}:${base.rank}:${base.isCore}:${base.isCamp}`
         const large = base.isCore || base.rank === 3
-        const labelHeight = large ? 61 : base.rank === 2 ? 49 : 39
+        const labelHeight = base.isCamp ? 32 : large ? 61 : base.rank === 2 ? 49 : 39
         if (fortCache.has(key)) {
             const group = fortCache.get(key)!.clone(true)
             return { group, flag: group.getObjectByName('banner')!, labelHeight }
         }
         const group = new THREE.Group()
         const stone = surfaces.stone, trim = material(0xafa995), dark = material(0x33383a)
+        if (base.isCamp) {
+            // A compact palisade-and-tent silhouette keeps temporary camps easy
+            // to distinguish from permanent stone forts.
+            part(group, rounded, surfaces.wood, 0, 1, 0, 25, 2, 25)
+            for (const side of [-1, 1]) for (let i = -3; i <= 3; i++) {
+                part(group, cylinder, surfaces.wood, side * 11, 5, i * 3.2, .8, 9, .8)
+                part(group, cylinder, surfaces.wood, i * 3.2, 5, side * 11, .8, 9, .8)
+            }
+            const tent = part(group, cone, cloth(base.owner === 'player' ? 0x8d6bc0 : 0xb9675d), 0, 7, -1, 8, 14, 8)
+            tent.rotation.y = Math.PI / 4
+            part(group, rounded, dark, 0, 4, 6.2, 2.8, 6, .4)
+            bake(group)
+            part(group, cylinder, metal(0xafa993), 7, 13, 3, .2, 18, .2)
+            const flag = part(group, curveCloth(5.5, 3.5), cloth(FACTION[base.owner]), 9.8, 17, 3, 1, 1, 1)
+            flag.name = 'banner'
+            fortCache.set(key, group)
+            const instance = group.clone(true)
+            return { group: instance, flag: instance.getObjectByName('banner')!, labelHeight }
+        }
         const width = large ? 29 : base.rank === 2 ? 24 : 19
         part(group, rounded, stone, 0, 1, 0, width + 7, 2, width + 7)
         // Four enclosing walls with a working-depth courtyard and an arched gate.

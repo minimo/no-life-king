@@ -441,8 +441,8 @@ export function generateMap(rnd: RandomFn): { mapGrid: number[][]; bases: Base[]
     }
     bases.push(createBase('n-fort-rd', 'neutral', 2, false, rdX, rdY, 50));
 
-    // 追加のランダムな中立砦 (0-2個)
-    const extraFortsCount = Math.floor(rnd() * 3); // 0, 1, 2
+    // 追加のランダムな中立砦 (0-1個)
+    const extraFortsCount = Math.floor(rnd() * 2); // 0, 1
     let fortAttempts = 0;
     while (bases.filter(b => b.owner === 'neutral' && b.rank === 2).length < 2 + extraFortsCount && fortAttempts < 200) {
         fortAttempts++;

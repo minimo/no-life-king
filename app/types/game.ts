@@ -14,17 +14,23 @@ export interface Base {
     productionCap: number
     growthRate: number
     isCore: boolean
+    /** Temporary fort created by a unit. It disappears instead of changing owner. */
+    isCamp?: boolean
     x: number
     y: number
     radius: number
     currentZoneRadius: number
 }
 
+export type UnitOrder = 'base' | 'camp' | 'wait'
+
 export interface Unit {
     id: string
     owner: Owner
     sourceId: string
     targetId: string
+    order?: UnitOrder
+    destination?: Point
     power: number
     path: Point[]
     pathIndex: number

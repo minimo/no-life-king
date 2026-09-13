@@ -127,7 +127,7 @@ export async function createGameScene({ canvasEl, gameStore, input }: GameSceneO
         label.hidden = !p.visible
     }
     const updateBase = (base: Base, time: number) => {
-        const signature = `${base.owner}:${base.rank}:${base.isCore}`
+        const signature = `${base.owner}:${base.rank}:${base.isCore}:${base.isCamp}`
         let visual = bases.get(base.id)
         if (!visual) {
             const model = kit.fort(base)
@@ -150,7 +150,7 @@ export async function createGameScene({ canvasEl, gameStore, input }: GameSceneO
         visual.label.classList.toggle('is-source', input.isSourceBase(base))
         const labelText = String(Math.floor(base.production))
         if (visual.label.textContent !== labelText) visual.label.textContent = labelText
-        visual.label.setAttribute('aria-label', `${base.owner === 'player' ? '自軍' : base.owner === 'cpu' ? '敵軍' : '中立'}拠点 兵力${labelText}`)
+        visual.label.setAttribute('aria-label', `${base.owner === 'player' ? '自軍' : base.owner === 'cpu' ? '敵軍' : '中立'}${base.isCamp ? 'ベースキャンプ' : '拠点'} 兵力${labelText}`)
         placeLabel(visual.label, base.x, base.y, visual.model.labelHeight)
         visual.zone.update(base)
     }
@@ -333,6 +333,15 @@ export async function createGameScene({ canvasEl, gameStore, input }: GameSceneO
             world.update(animationTime)
             gameStore.bases.forEach(b => updateBase(b, animationTime))
             gameStore.units.forEach(u => updateUnit(u, animationTime))
+            const aliveBases = new Set(gameStore.bases.map(b => b.id))
+            bases.forEach((v, id) => {
+                if (!aliveBases.has(id)) {
+                    v.model.group.removeFromParent()
+                    v.label.remove()
+                    v.zone.destroy()
+                    bases.delete(id)
+                }
+            })
             const alive = new Set(gameStore.units.map(u => u.id))
             units.forEach((v, id) => { if (!alive.has(id)) { v.model.group.removeFromParent(); v.label.remove(); units.delete(id) } })
             input.updateTargetedBase()

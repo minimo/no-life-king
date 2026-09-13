@@ -75,4 +75,38 @@ describe('3D world input preserves game commands', () => {
         expect(store.status).toBe('playing')
         input.reset()
     })
+
+    it('offers camp, wait, and cancel orders when a fort drag ends on open ground', async () => {
+        const { store, input } = setup()
+        const source = store.bases.find(b => b.id === 'p-core')!
+        const destination = Array.from({ length: 20 }, (_, y) => Array.from({ length: 20 }, (_, x) => ({ x: x * 60 - 100, y: y * 60 - 100 }))).flat()
+            .find(point => store.bases.every(base => Math.hypot(base.x - point.x, base.y - point.y) > store.targetSelectThreshold))!
+
+        input.handleBasePointerDown(source, event(100, 100))
+        input.setWorldPointer(destination)
+        await input.handleGlobalPointerUp(event(200, 200))
+
+        expect(input.contextMenu.value).toMatchObject({
+            visible: true,
+            type: 'destination',
+            sourceId: source.id,
+            destination,
+        })
+        expect(store.status).toBe('paused')
+        expect(store.units).toHaveLength(0)
+
+        input.handleContextMenuAction('camp')
+        expect(store.status).toBe('playing')
+        expect(store.units).toHaveLength(1)
+        expect(store.units[0]).toMatchObject({ order: 'camp', destination })
+
+        const count = store.units.length
+        vi.advanceTimersByTime(400)
+        input.handleBasePointerDown(source, event(100, 100))
+        input.setWorldPointer(destination)
+        await input.handleGlobalPointerUp(event(200, 200))
+        input.handleContextMenuAction('cancel')
+        expect(store.units).toHaveLength(count)
+        input.reset()
+    })
 })

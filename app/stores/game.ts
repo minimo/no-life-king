@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { checkGameOver as checkGameOverLogic, redirectUnit as redirectUnitLogic, resolveCombat as resolveCombatLogic, sendUnits as sendUnitsLogic, stopUnit as stopUnitLogic, updateSimulation, upgradeBase as upgradeBaseLogic } from '~/game/simulation'
+import { checkGameOver as checkGameOverLogic, redirectUnit as redirectUnitLogic, resolveCombat as resolveCombatLogic, sendUnits as sendUnitsLogic, sendUnitsToPoint as sendUnitsToPointLogic, stopUnit as stopUnitLogic, updateSimulation, upgradeBase as upgradeBaseLogic } from '~/game/simulation'
 import { createBase as createBaseLogic, generateMap } from '~/game/mapGenerator'
 import { createMulberry32, hashString } from '~/game/random'
 import { executeCPUAction as executeCPUActionLogic, tryCPUSend as tryCPUSendLogic, updateCPU as updateCPULogic } from '~/game/cpu'
@@ -44,7 +44,7 @@ export const useGameStore = defineStore('game', {
             const { mapGrid, bases } = generateMap(rnd)
             this.mapGrid = mapGrid
             // Preserve the terrain and fill gaps in the playable area with neutral bases.
-            this.bases = expandBasePlacement(mapGrid, bases, { forts: 5, villages: 21 })
+            this.bases = expandBasePlacement(mapGrid, bases, { forts: 3, villages: 21 })
         },
 
         createBase(id: string, owner: Owner, rank: Rank, isCore: boolean, x: number, y: number, initialProduction?: number): Base {
@@ -53,6 +53,10 @@ export const useGameStore = defineStore('game', {
 
         sendUnits(sourceId: string, targetId: string, ratio?: number): void {
             sendUnitsLogic(this, sourceId, targetId, ratio)
+        },
+
+        sendUnitsToPoint(sourceId: string, destination: { x: number; y: number }, order: 'camp' | 'wait', ratio?: number): void {
+            sendUnitsToPointLogic(this, sourceId, destination, order, ratio)
         },
 
         redirectUnit(unitId: string, targetId: string): void {
