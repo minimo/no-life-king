@@ -4,6 +4,7 @@ import { createBase as createBaseLogic, generateMap } from '~/game/mapGenerator'
 import { createMulberry32, hashString } from '~/game/random'
 import { executeCPUAction as executeCPUActionLogic, tryCPUSend as tryCPUSendLogic, updateCPU as updateCPULogic } from '~/game/cpu'
 import { findPath } from '~/game/pathfinding'
+import { expandBasePlacement } from '~/game/playableArea'
 import type { Base, GameState, Owner, Rank, Unit } from '~/types/game'
 
 export const useGameStore = defineStore('game', {
@@ -42,7 +43,8 @@ export const useGameStore = defineStore('game', {
 
             const { mapGrid, bases } = generateMap(rnd)
             this.mapGrid = mapGrid
-            this.bases = bases
+            // Preserve the terrain and fill gaps in the playable area with neutral bases.
+            this.bases = expandBasePlacement(mapGrid, bases, { forts: 5, villages: 21 })
         },
 
         createBase(id: string, owner: Owner, rank: Rank, isCore: boolean, x: number, y: number, initialProduction?: number): Base {

@@ -1,4 +1,5 @@
-import { GRID_MAX, GRID_SIZE, TILE_PX } from './constants'
+import { TILE_PX } from './constants'
+import { PLAYABLE_GRID_MIN, PLAYABLE_GRID_MAX } from './playableArea'
 import { getTileCost } from './terrain'
 import type { Point, Rank } from '../types/game'
 
@@ -10,7 +11,7 @@ export function findPath(mapGrid: number[][], startWX: number, startWY: number, 
     const ey = Math.round(endWY / TILE_PX)
 
     // グリッド範囲外なら直線パス
-    if (sx < 0 || sx > GRID_MAX || sy < 0 || sy > GRID_MAX || ex < 0 || ex > GRID_MAX || ey < 0 || ey > GRID_MAX) {
+    if (sx < PLAYABLE_GRID_MIN || sx > PLAYABLE_GRID_MAX || sy < PLAYABLE_GRID_MIN || sy > PLAYABLE_GRID_MAX || ex < PLAYABLE_GRID_MIN || ex > PLAYABLE_GRID_MAX || ey < PLAYABLE_GRID_MIN || ey > PLAYABLE_GRID_MAX) {
         return [{ x: startWX, y: startWY }, { x: endWX, y: endWY }]
     }
 
@@ -21,8 +22,8 @@ export function findPath(mapGrid: number[][], startWX: number, startWY: number, 
         [1, -1, 1.414], [1, 0, 1], [1, 1, 1.414],
     ]
 
-    const GRID_W = GRID_SIZE
-    const key = (x: number, y: number) => y * GRID_W + x
+    const GRID_W = PLAYABLE_GRID_MAX - PLAYABLE_GRID_MIN + 1
+    const key = (x: number, y: number) => (y - PLAYABLE_GRID_MIN) * GRID_W + x - PLAYABLE_GRID_MIN
     const gScore = new Map<number, number>()
     const fScore = new Map<number, number>()
     const cameFrom = new Map<number, number>()
@@ -84,16 +85,20 @@ export function findPath(mapGrid: number[][], startWX: number, startWY: number, 
         if (cur.k === ek) { found = true; break }
         closed.add(cur.k)
 
-        const cx = cur.k % GRID_W
-        const cy = (cur.k - cx) / GRID_W
+        const cx = cur.k % GRID_W + PLAYABLE_GRID_MIN
+        const cy = Math.floor(cur.k / GRID_W) + PLAYABLE_GRID_MIN
         const curG = gScore.get(cur.k) ?? Infinity
 
         for (const [ddx, ddy, baseDist] of DIRS) {
             const nx = cx + ddx
             const ny = cy + ddy
-            if (nx < 0 || nx > GRID_MAX || ny < 0 || ny > GRID_MAX) continue
+            if (nx < PLAYABLE_GRID_MIN || nx > PLAYABLE_GRID_MAX || ny < PLAYABLE_GRID_MIN || ny > PLAYABLE_GRID_MAX) continue
             const nk = key(nx, ny)
             if (closed.has(nk)) continue
+
+            // Diagonal steps must not clip a water cell at the shared corner.
+            if (ddx !== 0 && ddy !== 0 && (!Number.isFinite(getTileCost(mapGrid, cx + ddx, cy, rank))
+                || !Number.isFinite(getTileCost(mapGrid, cx, cy + ddy, rank)))) continue
 
             const tileCost = getTileCost(mapGrid, nx, ny, rank)
             const tentG = curG + baseDist * tileCost
@@ -119,8 +124,8 @@ export function findPath(mapGrid: number[][], startWX: number, startWY: number, 
     const gridPath: Point[] = []
     let ck = ek
     while (ck !== undefined) {
-        const cx = ck % GRID_W
-        const cy = (ck - cx) / GRID_W
+        const cx = ck % GRID_W + PLAYABLE_GRID_MIN
+        const cy = Math.floor(ck / GRID_W) + PLAYABLE_GRID_MIN
         gridPath.unshift({ x: cx, y: cy })
         if (ck === sk) break
         ck = cameFrom.get(ck)!

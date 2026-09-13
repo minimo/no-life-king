@@ -1,12 +1,12 @@
-import { GRID_MAX, TILE, TILE_PX, TILE_VARIANT } from './constants'
+import { TILE, TILE_PX, TILE_VARIANT } from './constants'
+import { getPlayableTile } from './playableArea'
 import type { Base, Rank } from '../types/game'
 
 /** ユニット現在位置の地形タイルから速度倍率を返す */
 export function getTerrainSpeedMultiplier(mapGrid: number[][], worldX: number, worldY: number, bases: Base[], rank: Rank): number {
     const gx = Math.round(worldX / TILE_PX)
     const gy = Math.round(worldY / TILE_PX)
-    if (gy < 0 || gy > GRID_MAX || gx < 0 || gx > GRID_MAX) return 1.0
-    const tile = mapGrid[gy]?.[gx] ?? TILE.GRASS
+    const tile = getPlayableTile(mapGrid, gx, gy)
 
     // 砦の影響範囲内か判定
     let inZone = false
@@ -48,8 +48,7 @@ export function getTerrainSpeedMultiplier(mapGrid: number[][], worldX: number, w
 
 /** グリッドタイルの移動コストを返す（速度倍率の逆数）*/
 export function getTileCost(mapGrid: number[][], gx: number, gy: number, rank: Rank): number {
-    if (gy < 0 || gy > GRID_MAX || gx < 0 || gx > GRID_MAX) return 1.0
-    const tile = mapGrid[gy]?.[gx] ?? TILE.GRASS
+    const tile = getPlayableTile(mapGrid, gx, gy)
     if (tile === TILE.WATER) {
         // 金色ユニット (Rank 3) は水を渡れる（コスト高め = 速度0.5倍）
         if (rank === 3) return 2.0
