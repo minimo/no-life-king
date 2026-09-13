@@ -1,3 +1,5 @@
+import { createNoise2D } from 'simplex-noise'
+import { createMulberry32, hashString } from '../../game/random'
 import { LOGICAL_SIZE, TILE, TILE_PX } from '../../game/constants'
 import type { Base } from '../../types/game'
 
@@ -9,10 +11,27 @@ export const MAP_MAX = LOGICAL_SIZE + TILE_PX / 2
 
 /** Rendering-only elevation. Never modifies the map or movement costs. */
 export function createHeightfield(grid: number[][], bases: Base[]) {
+    const noise = createNoise2D(createMulberry32(hashString(JSON.stringify(grid))))
+    const waterAt = (gx: number, gy: number) => {
+        const tile = grid[Math.max(0, Math.min(grid.length - 1, gy))]?.[Math.max(0, Math.min(grid.length - 1, gx))]
+        return tile === TILE.WATER || tile === TILE.BRIDGE ? 1 : 0
+    }
+    const smooth = (t: number) => t * t * (3 - 2 * t)
+    // Cubic filtering rounds river bends without changing the navigation tiles.
+    const kernel = (distance: number) => {
+        const d = Math.abs(distance)
+        return d < 1 ? (4 - 6 * d * d + 3 * d * d * d) / 6 : d < 2 ? Math.pow(2 - d, 3) / 6 : 0
+    }
+    const waterMask = (x: number, y: number) => {
+        const gx = x / TILE_PX, gy = y / TILE_PX, i = Math.floor(gx), j = Math.floor(gy)
+        let mask = 0
+        for (let dy = -1; dy <= 2; dy++) for (let dx = -1; dx <= 2; dx++) {
+            mask += waterAt(i + dx, j + dy) * kernel(gx - i - dx) * kernel(gy - j - dy)
+        }
+        return mask
+    }
     const tileAt = (x: number, y: number) => grid[Math.max(0, Math.min(grid.length - 1, Math.round(y / TILE_PX)))]?.[Math.max(0, Math.min(grid.length - 1, Math.round(x / TILE_PX)))] ?? TILE.GRASS
     const raw = (x: number, y: number) => {
-        const tile = tileAt(x, y)
-        if (tile === TILE.WATER || tile === TILE.BRIDGE) return -3
         let mountain = 0
         let weight = 0
         let riverDistance = Infinity
@@ -22,13 +41,16 @@ export function createHeightfield(grid: number[][], bases: Base[]) {
             const t = grid[gy]?.[gx] ?? 0
             const d = Math.hypot(x / TILE_PX - gx, y / TILE_PX - gy)
             const w = Math.max(0, 3 - d)
-            mountain += (t >= 23 && t <= 24 ? 60 : t === 2 || t >= 21 && t <= 22 ? 32 : 0) * w
+            mountain += (t >= 23 && t <= 24 ? 130 : t === 2 || t >= 21 && t <= 22 ? 72 : 0) * w
             weight += w
             if (t === TILE.WATER || t === TILE.BRIDGE) riverDistance = Math.min(riverDistance, d)
         }
-        const rolling = 7 + 3 * Math.sin(x * .014) * Math.cos(y * .012)
-        const height = rolling + mountain / Math.max(1, weight)
-        return Math.min(height, 2 + Math.max(0, riverDistance - .5) * 12)
+        const rolling = 18 + noise(x * .004, y * .004) * 13 + noise(x * .013, y * .013) * 3
+        const ridge = 1 + .12 * noise(x * .012, y * .012)
+        const height = Math.max(7, rolling) + mountain / Math.max(1, weight) * ridge
+        const bank = (.5 - waterMask(x, y)) * 12
+        const riverBlend = smooth(Math.max(0, Math.min(1, (riverDistance - 1.3) / 2.7)))
+        return bank + (height - bank) * riverBlend
     }
     const foundations = bases.map(base => ({ x: base.x, y: base.y, height: Math.max(5, raw(base.x, base.y)) }))
     const size = Math.round((MAP_MAX - MAP_MIN) / MESH_STEP) + 1

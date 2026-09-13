@@ -2,66 +2,30 @@ import * as THREE from 'three'
 import { createForest } from './forest'
 import { TILE, TILE_PX } from '../../game/constants'
 import type { Base } from '../../types/game'
-import { BRIDGE_HEIGHT, createHeightfield, MAP_MIN, MESH_STEP } from './heightfield'
+import { BRIDGE_HEIGHT, createHeightfield } from './heightfield'
+import { createLandscape, LANDSCAPE_RADIUS, TERRAIN_CENTER } from './landscape'
+import { createTerrainMeshes } from './terrainMesh'
+import { createScenery } from './scenery'
 import type { ModelKit } from './models'
 
 export function createWorld(grid: number[][], bases: Base[], kit: ModelKit) {
     grid = grid.map(row => Array.from(row))
     const group = new THREE.Group()
-    const field = createHeightfield(grid, bases)
-    const { size, heights } = field
-    const positions: number[] = [], colors: number[] = [], uvs: number[] = [], indices: number[] = []
-    const color = new THREE.Color()
-    const meadow = new THREE.Color(0x687552), rock = new THREE.Color(0x929080), bank = new THREE.Color(0x7d7863)
-    for (let j = 0; j < size; j++) for (let i = 0; i < size; i++) {
-        const x = MAP_MIN + i * MESH_STEP, z = MAP_MIN + j * MESH_STEP, h = heights[j * size + i]!
-        positions.push(x, h, z)
-        color.copy(meadow).lerp(rock, THREE.MathUtils.smoothstep(h, 18, 48))
-        if (h < 5) color.lerp(bank, 1 - Math.max(0, h) / 5)
-        color.multiplyScalar(.97 + .035 * Math.sin(x * .05) * Math.cos(z * .041))
-        colors.push(color.r, color.g, color.b)
-        uvs.push(i / (size - 1), j / (size - 1))
-        if (i < size - 1 && j < size - 1) {
-            const a = j * size + i
-            indices.push(a, a + size, a + 1, a + size + 1, a + 1, a + size)
-        }
+    const coreField = createHeightfield(grid, bases)
+    const landscape = createLandscape(grid, coreField)
+    const terrainMeshes = createTerrainMeshes(coreField, landscape, kit.surfaces.ground)
+    const field = { ...coreField, heightAt: terrainMeshes.heightAt,
+        surfaceAt: (x: number, y: number) => landscape.inside(x, y) ? coreField.surfaceAt(x, y) : Math.max(0, terrainMeshes.heightAt(x, y)),
     }
-    const geometry = new THREE.BufferGeometry()
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
-    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
-    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2))
-    geometry.setIndex(indices)
-    geometry.computeVertexNormals()
-    const groundMaterial = kit.surfaces.ground
-    const terrain = new THREE.Mesh(geometry, groundMaterial)
-    terrain.receiveShadow = true
-    group.add(terrain)
-    kit.part(group, kit.box, 0x303f3c, 416, -19, 416, 848, 28, 848)
-    // A continuous vertical edge closes the terrain down to the diorama slab.
-    const skirtPositions: number[] = []
-    const edge = (a: number, b: number) => {
-        const ax = MAP_MIN + a % size * MESH_STEP, az = MAP_MIN + Math.floor(a / size) * MESH_STEP
-        const bx = MAP_MIN + b % size * MESH_STEP, bz = MAP_MIN + Math.floor(b / size) * MESH_STEP
-        skirtPositions.push(ax, heights[a]!, az, bx, heights[b]!, bz, ax, -6, az, bx, heights[b]!, bz, bx, -6, bz, ax, -6, az)
-    }
-    for (let i = 0; i < size - 1; i++) {
-        edge(i, i + 1); edge((size - 1) * size + i + 1, (size - 1) * size + i)
-        edge((i + 1) * size, i * size); edge(i * size + size - 1, (i + 1) * size + size - 1)
-    }
-    const skirtGeometry = new THREE.BufferGeometry()
-    skirtGeometry.setAttribute('position', new THREE.Float32BufferAttribute(skirtPositions, 3))
-    skirtGeometry.computeVertexNormals()
-    const skirt = new THREE.Mesh(skirtGeometry, kit.material(0x485747))
-    group.add(skirt)
+    const { terrain, surroundings } = terrainMeshes
+    group.add(terrain, surroundings)
+    const scenery = createScenery(grid, bases, landscape, field.heightAt, kit)
+    group.add(scenery.group)
 
     const trees: { x: number; z: number; h: number; scale: number }[] = []
-    const waterPositions: number[] = []
     const bridges: THREE.Object3D[] = []
     for (let j = 0; j < grid.length; j++) for (let i = 0; i < grid[j]!.length; i++) {
         const t = grid[j]![i]!, x = i * TILE_PX, z = j * TILE_PX
-        if (t === TILE.WATER || t === TILE.BRIDGE) {
-            waterPositions.push(x - 8, 0, z - 8, x - 8, 0, z + 8, x + 8, 0, z - 8, x + 8, 0, z + 8, x + 8, 0, z - 8, x - 8, 0, z + 8)
-        }
         if (t === TILE.BRIDGE) {
             const bridge = new THREE.Group()
             bridge.position.set(x, 0, z)
@@ -102,11 +66,12 @@ export function createWorld(grid: number[][], bases: Base[], kit: ModelKit) {
             }
         }
     }
-    const forest = createForest(trees, kit)
+    const forest = createForest([...trees, ...scenery.trees], kit)
     group.add(forest.group)
-    const waterGeometry = new THREE.BufferGeometry()
-    waterGeometry.setAttribute('position', new THREE.Float32BufferAttribute(waterPositions, 3))
-    waterGeometry.computeVertexNormals()
+    // The terrain itself shapes the shoreline; no square water-tile silhouettes.
+    const waterGeometry = new THREE.PlaneGeometry(LANDSCAPE_RADIUS * 2, LANDSCAPE_RADIUS * 2)
+    waterGeometry.rotateX(-Math.PI / 2)
+    waterGeometry.translate(TERRAIN_CENTER, 0, TERRAIN_CENTER)
     const waterMaterial = new THREE.MeshStandardMaterial({ color: 0x466e73, roughness: .2, metalness: .45, transparent: true, opacity: .87 })
     waterMaterial.onBeforeCompile = shader => {
         shader.uniforms.time = { value: 0 }
@@ -116,11 +81,11 @@ export function createWorld(grid: number[][], bases: Base[], kit: ModelKit) {
     }
     const water = new THREE.Mesh(waterGeometry, waterMaterial)
     group.add(water)
-    return { group, field, pickables: [terrain, water, ...bridges], update(time: number) {
+    return { group, field, pickables: [terrain, surroundings, water, ...bridges], update(time: number) {
         const shader = waterMaterial.userData.shader
         if (shader) shader.uniforms.time.value = time
     }, destroy() {
-        geometry.dispose(); skirtGeometry.dispose(); waterGeometry.dispose(); waterMaterial.dispose()
+        terrainMeshes.destroy(); scenery.destroy(); waterGeometry.dispose(); waterMaterial.dispose()
         forest.destroy()
         group.removeFromParent()
     } }

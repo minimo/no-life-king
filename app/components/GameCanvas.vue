@@ -77,7 +77,7 @@ onUnmounted(() => {
         <div class="battle-actions"><span>自軍拠点 <b>{{ ownedBases }}</b> / {{ gameStore.bases.length }}</span><button @click="resetView" aria-label="視点をリセット">視点リセット</button></div>
       </header>
       <footer class="battle-footer">
-        <div class="instructions"><span>ドラッグ <b>出兵</b> · ダブルクリック <b>一斉出兵</b> · 長押し <b>強化 / 待機</b></span><span>何もない場所をドラッグでパン · Shift＋右ドラッグで回転 · ホイールでズーム · 2本指でパン・ズーム</span></div>
+        <div class="instructions"><span>ドラッグ <b>出兵</b> · ダブルクリック <b>一斉出兵</b> · 長押し <b>強化 / 待機</b></span><span>何もない場所をドラッグでパン · Shift＋右ドラッグで回転 · ホイールでズーム · 2本指の横ドラッグで回転（トラックパッド対応）・ピンチでズーム</span></div>
         <label class="send-control"><span>出兵割合 <strong>{{ Math.round(gameStore.sendRatio * 100) }}%</strong></span><input v-model.number="gameStore.sendRatio" type="range" min="0.1" max="0.9" step="0.1" aria-label="出兵割合"></label>
         <div class="factions"><span class="player-dot">自軍</span><span class="cpu-dot">敵軍</span><span class="neutral-dot">中立</span></div>
       </footer>

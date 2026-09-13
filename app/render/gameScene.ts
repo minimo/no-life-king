@@ -7,6 +7,7 @@ import type { GameInput } from '~/composables/useGameInput'
 import type { Base, Unit } from '~/types/game'
 import { createModelKit, FACTION } from './three/models'
 import { createWorld } from './three/world'
+import { createAtmosphere } from './three/atmosphere'
 import { createPathOverlay, createTerritory } from './three/overlays'
 
 interface GameSceneOptions {
@@ -22,13 +23,14 @@ export async function createGameScene({ canvasEl, gameStore, input }: GameSceneO
     renderer.shadowMap.type = THREE.PCFSoftShadowMap
     renderer.toneMapping = THREE.ACESFilmicToneMapping
     renderer.toneMappingExposure = 1.05
-    renderer.domElement.setAttribute('aria-label', '3Dの戦場。拠点をドラッグして出兵、長押しでメニュー。何もない場所からの左ドラッグでパン、Shiftと右ドラッグで回転、ホイールで拡大縮小。')
+    renderer.domElement.setAttribute('aria-label', '3Dの戦場。拠点をドラッグして出兵、長押しでメニュー。何もない場所からの左ドラッグでパン、Shiftと右ドラッグで回転、ホイールで拡大縮小。タッチ画面・トラックパッドの2本指の横ドラッグで左右回転、ピンチで拡大縮小。')
     canvasEl.appendChild(renderer.domElement)
     const labels = document.createElement('div')
     labels.className = 'world-labels'
     canvasEl.appendChild(labels)
     const scene = new THREE.Scene()
-    scene.background = new THREE.Color(0x16282c)
+    scene.background = new THREE.Color(0xb6c9cb)
+    const atmosphere = createAtmosphere(scene)
     const pmrem = new THREE.PMREMGenerator(renderer)
     const environmentScene = new RoomEnvironment()
     const environment = pmrem.fromScene(environmentScene, .04)
@@ -36,24 +38,35 @@ export async function createGameScene({ canvasEl, gameStore, input }: GameSceneO
     scene.environmentIntensity = .45
     environmentScene.dispose()
     pmrem.dispose()
-    const camera = new THREE.PerspectiveCamera(38, 16 / 9, 1, 12000)
-    const controls = new OrbitControls(camera, renderer.domElement)
+    const camera = new THREE.PerspectiveCamera(42, 16 / 9, 1, 12000)
+    const controls = new OrbitControls(camera, canvasEl)
     controls.enableDamping = true
     controls.enablePan = true
     controls.screenSpacePanning = false
     controls.panSpeed = 1.15
-    controls.minDistance = 220
+    controls.minDistance = 120
     controls.maxDistance = 2300
     controls.minPolarAngle = .25
-    controls.maxPolarAngle = Math.PI / 2.6
+    controls.maxPolarAngle = Math.PI / 2.3
     controls.mouseButtons = { LEFT: null as unknown as THREE.MOUSE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.PAN }
-    controls.touches = { ONE: null as unknown as THREE.TOUCH, TWO: THREE.TOUCH.DOLLY_PAN }
+    controls.touches = { ONE: null as unknown as THREE.TOUCH, TWO: THREE.TOUCH.DOLLY_ROTATE }
+    // Trackpads send two-finger swipes as wheel events, not touch pointers.
+    // Capture horizontal swipes before OrbitControls treats them as zoom input.
+    const trackpadRotate = (event: WheelEvent) => {
+        if (!controls.enabled || event.ctrlKey || Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        const pixels = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16
+            : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? canvasEl.clientWidth : 1
+        controls.rotateLeft(-event.deltaX * pixels * Math.PI * 2 / Math.max(1, canvasEl.clientHeight))
+    }
+    canvasEl.addEventListener('wheel', trackpadRotate, { capture: true, passive: false })
     const resetCamera = () => {
         controls.enableDamping = false
         controls.update() // Flush any rotation momentum before restoring the view.
-        controls.target.set(416, 8, 416)
+        controls.target.set(416, 24, 416)
         const fit = Math.max(1, 1.15 / camera.aspect)
-        camera.position.set(416 + 944 * fit, 8 + 1195 * fit, 416 + 944 * fit)
+        camera.position.set(416 + 944 * fit, 24 + 700 * fit, 416 + 1000 * fit)
         controls.maxDistance = Math.max(2300, 2600 * fit)
         camera.zoom = 1
         camera.updateProjectionMatrix()
@@ -217,7 +230,8 @@ export async function createGameScene({ canvasEl, gameStore, input }: GameSceneO
         camera.updateMatrixWorld()
         scene.updateMatrixWorld(true)
         raycaster.setFromCamera(new THREE.Vector2((event.clientX - rect.left) / rect.width * 2 - 1, -(event.clientY - rect.top) / rect.height * 2 + 1), camera)
-        const element = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-base], [data-unit]') : null
+        // Pointer capture targets the wrapper; resolve the label under the cursor.
+        const element = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('[data-base], [data-unit]')
         let baseId = element?.dataset.base, unitId = element?.dataset.unit
         if (!baseId && !unitId) {
             const hit = raycaster.intersectObjects([...bases.values()].map(v => v.model.group).concat([...units.values()].map(v => v.model.group)), true)[0]
@@ -297,6 +311,14 @@ export async function createGameScene({ canvasEl, gameStore, input }: GameSceneO
         }
         controls.enabled = gameStore.status === 'playing'
         controls.update()
+        // Keep the camera above hills when orbiting close to the terrain.
+        const groundBelowCamera = world.field.heightAt(camera.position.x, camera.position.z)
+        if (camera.position.y < groundBelowCamera + 25) {
+            camera.position.y = groundBelowCamera + 25
+            camera.lookAt(controls.target)
+        }
+        camera.updateMatrixWorld()
+        atmosphere.update(camera, getNightAlpha(gameStore.dayTime) * 2)
         const visible = gameStore.status !== 'title'
         labels.hidden = !visible
         world.group.visible = visible
@@ -308,7 +330,6 @@ export async function createGameScene({ canvasEl, gameStore, input }: GameSceneO
             sky.intensity = 1.7 - night * .9
             sun.intensity = 2.5 - night * 1.8
             sun.color.set(night > .5 ? 0xa1bbff : 0xffdeb3)
-            ;(scene.background as THREE.Color).set(0x16282c).lerp(new THREE.Color(0x0b1024), night)
             world.update(animationTime)
             gameStore.bases.forEach(b => updateBase(b, animationTime))
             gameStore.units.forEach(u => updateUnit(u, animationTime))
@@ -334,9 +355,10 @@ export async function createGameScene({ canvasEl, gameStore, input }: GameSceneO
         window.removeEventListener('pointercancel', cancel)
         window.removeEventListener('blur', cancel)
         input.reset()
+        canvasEl.removeEventListener('wheel', trackpadRotate, true)
         controls.dispose()
         removeBases(); removeUnits(); pathOverlay.destroy()
-        world.destroy(); kit.destroy(); sun.shadow.dispose()
+        world.destroy(); kit.destroy(); sun.shadow.dispose(); atmosphere.destroy()
         environment.dispose(); renderer.dispose(); renderer.forceContextLoss()
         renderer.domElement.remove(); labels.remove()
     } }
